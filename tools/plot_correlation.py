@@ -125,19 +125,41 @@ def main():
     if not rows:
         return
 
-    # 1. Correlation plots (Scatter)
+    # 1. Legacy Correlation plots (filenames expected by CI)
     write_correlation_plot(rows, "tlb_invalidations_per_sec", "latency_p99_ms",
                            "TLB invalidations / sec", "P99 latency (ms)",
                            "TLB invalidations vs P99 latency",
-                           os.path.join(args.output_dir, "corr_tlb_vs_p99.png"), args.window)
+                           os.path.join(args.output_dir, "tlb_invalidations_vs_p99.png"), args.window)
+    
+    write_correlation_plot(rows, "tlb_bytes_invalidated_per_sec", "latency_p99_ms",
+                           "Bytes invalidated / sec", "P99 latency (ms)",
+                           "Bytes invalidated vs P99 latency",
+                           os.path.join(args.output_dir, "bytes_invalidated_vs_p99.png"), args.window)
 
-    # 2. Time-series plots (Time alignment + Smoothing)
+    write_correlation_plot(rows, "gpu_utilization", "tlb_invalidations_per_sec",
+                           "GPU utilization (%)", "TLB invalidations / sec",
+                           "GPU utilization vs TLB invalidations",
+                           os.path.join(args.output_dir, "gpu_util_vs_tlb_invalidations.png"), args.window)
+
+    # Scheduler plot (if columns exist)
+    scheduler_key = None
+    for candidate in ("sched_cpu_runqueue_latency_ms", "sched_cpu_pressure_avg10", "sched_runnable_pressure"):
+        if any(safe_float(row.get(candidate)) is not None for row in rows):
+            scheduler_key = candidate
+            break
+    
+    if scheduler_key:
+        write_correlation_plot(rows, scheduler_key, "tlb_invalidations_per_sec",
+                               scheduler_key, "TLB invalidations / sec",
+                               "Scheduler pressure vs TLB invalidations",
+                               os.path.join(args.output_dir, "scheduler_pressure_vs_tlb_invalidations.png"), args.window)
+
+    # 2. New Upgraded Time-series plots (Time alignment + Smoothing)
     write_timeseries_plot(rows, "tlb_invalidations_per_sec", "latency_p99_ms",
                           "TLB invalidations / sec", "P99 latency (ms)",
                           "TLB Activity vs Latency",
                           os.path.join(args.output_dir, "ts_tlb_vs_latency.png"), args.window)
     
-    # 3. GPU Correlation
     write_timeseries_plot(rows, "tlb_invalidations_per_sec", "gpu_utilization",
                           "TLB invalidations / sec", "GPU Utilization (%)",
                           "TLB Activity vs GPU Utilization",
