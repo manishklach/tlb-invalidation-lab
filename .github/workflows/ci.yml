@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  userspace-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Python syntax checks
+        run: python -m py_compile tools/parse_trace.py tools/tlb_health_score.py tools/prometheus_exporter.py
+
+      - name: Parse sample trace
+        run: |
+          python tools/parse_trace.py examples/sample_trace.txt --csv /tmp/sample_trace.csv >/tmp/parse_stdout.csv
+          python tools/tlb_health_score.py /tmp/sample_trace.csv --window-seconds 10 >/tmp/health.txt
+
+      - name: Build benchmarks
+        run: make -C benchmarks

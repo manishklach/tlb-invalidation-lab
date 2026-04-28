@@ -5,6 +5,7 @@ DURATION="${1:-10}"
 OUT_DIR="${OUT_DIR:-out}"
 OUT_FILE="${OUT_DIR}/tlb_trace.txt"
 TRACEFS="${TRACEFS:-/sys/kernel/tracing}"
+ENABLED_EVENTS=0
 
 require_root() {
     if [[ "${EUID}" -ne 0 ]]; then
@@ -29,6 +30,7 @@ enable_event() {
         return
     fi
     echo 1 > "${TRACEFS}/events/${event}/enable"
+    ENABLED_EVENTS=$((ENABLED_EVENTS + 1))
 }
 
 disable_event() {
@@ -56,6 +58,12 @@ main() {
 
     enable_event "tlb/tlb_invalidation"
     enable_event "mmu/mmu_notifier_invalidate_range"
+
+    if [[ "${ENABLED_EVENTS}" -eq 0 ]]; then
+        echo "warning: no requested tracepoints were present; writing an empty capture" >&2
+        : > "${OUT_FILE}"
+        return 0
+    fi
 
     echo 1 > "${TRACEFS}/tracing_on"
     sleep "${DURATION}"

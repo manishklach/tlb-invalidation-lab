@@ -10,7 +10,7 @@ A virtual memory change becomes visible to execution through a sequence that is 
 4. Other CPUs that may have cached those translations are notified.
 5. Execution resumes with fresh translation state.
 
-For performance work, the interesting part is not only the invalidation itself. It is the fanout, timing, and surrounding subsystem activity.
+For this lab, the interesting part is not only the invalidation itself. It is the fanout, timing, and surrounding subsystem activity. The goal is to make those relationships inspectable, not to assert that every invalidation burst is harmful.
 
 ## Mapping change to invalidation
 
@@ -78,3 +78,5 @@ The intended workflow is:
 - aggregate per process and per source
 - compare invalidation behavior with latency and throughput metrics
 - investigate attribution, not just symptom curves
+
+That distinction matters. This repository is about exposing a hidden source of variance so it can be analyzed alongside other evidence, not about claiming that TLB behavior alone explains workload performance.

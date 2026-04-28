@@ -122,7 +122,15 @@ def make_handler(state):
 def main():
     args = parse_args()
     state = MetricsState()
-    state.set_payload(build_metrics(args.input, args.window_seconds))
+    try:
+        state.set_payload(build_metrics(args.input, args.window_seconds))
+    except Exception as exc:
+        state.set_payload(
+            "# HELP tlb_exporter_error Exporter initialization failure\n"
+            "# TYPE tlb_exporter_error gauge\n"
+            "tlb_exporter_error 1\n"
+            f"# error {exc}\n"
+        )
     start_refresher(args, state)
 
     handler = make_handler(state)

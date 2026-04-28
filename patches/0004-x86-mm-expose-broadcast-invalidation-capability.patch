@@ -9,8 +9,8 @@ or any other new invalidation behavior. It only exposes capability bits
 through sysfs for observability.
 ---
  arch/x86/mm/Makefile       |  1 +
- arch/x86/mm/tlb_features.c | 57 +++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 58 insertions(+)
+ arch/x86/mm/tlb_features.c | 69 +++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 70 insertions(+)
  create mode 100644 arch/x86/mm/tlb_features.c
 
 diff --git a/arch/x86/mm/Makefile b/arch/x86/mm/Makefile
@@ -27,7 +27,7 @@ new file mode 100644
 index 000000000000..dddddddddddd
 --- /dev/null
 +++ b/arch/x86/mm/tlb_features.c
-@@ -0,0 +1,57 @@
+@@ -0,0 +1,69 @@
 +// SPDX-License-Identifier: GPL-2.0
 +#include <linux/init.h>
 +#include <linux/kernel.h>
@@ -38,19 +38,26 @@ index 000000000000..dddddddddddd
 +
 +static struct kobject *tlb_features_kobj;
 +
++static bool tlb_has_invlpgb(void)
++{
++#ifdef X86_FEATURE_INVLPGB
++	return boot_cpu_has(X86_FEATURE_INVLPGB);
++#else
++	return false;
++#endif
++}
++
 +static ssize_t broadcast_invalidation_show(struct kobject *kobj,
 +					   struct kobj_attribute *attr,
 +					   char *buf)
 +{
-+	return sysfs_emit(buf, "%d\n",
-+			  boot_cpu_has(X86_FEATURE_INVLPGB) ? 1 : 0);
++	return sysfs_emit(buf, "%d\n", tlb_has_invlpgb() ? 1 : 0);
 +}
 +
 +static ssize_t invlpgb_show(struct kobject *kobj,
 +			    struct kobj_attribute *attr, char *buf)
 +{
-+	return sysfs_emit(buf, "%d\n",
-+			  boot_cpu_has(X86_FEATURE_INVLPGB) ? 1 : 0);
++	return sysfs_emit(buf, "%d\n", tlb_has_invlpgb() ? 1 : 0);
 +}
 +
 +static struct kobj_attribute broadcast_invalidation_attr =

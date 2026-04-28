@@ -56,6 +56,8 @@ def main():
         "type_counts": defaultdict(int),
     })
 
+    matched = 0
+
     with open(args.trace, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             m = TLB_RE.search(line)
@@ -67,6 +69,7 @@ def main():
                 bucket["tgid"] = int(data["tgid"])
                 bucket["comm"] = data["comm"]
                 update_bucket(buckets, key, "tlb", data)
+                matched += 1
                 continue
 
             m = MMU_RE.search(line)
@@ -78,6 +81,7 @@ def main():
                 bucket["tgid"] = int(data["tgid"])
                 bucket["comm"] = data["comm"]
                 update_bucket(buckets, key, "mmu", data)
+                matched += 1
 
     rows = []
     for _, bucket in sorted(buckets.items(), key=lambda item: item[1]["bytes_invalidated"], reverse=True):
@@ -122,6 +126,9 @@ def main():
             csv_writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             csv_writer.writeheader()
             csv_writer.writerows(rows)
+
+    if matched == 0:
+        print("warning: no matching tlb/mmu tracepoint events found", file=sys.stderr)
 
 
 if __name__ == "__main__":

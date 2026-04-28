@@ -1,6 +1,4 @@
 out/
-sample_trace.txt
-sample_trace.csv
 benchmarks/mmap_churn
 benchmarks/mprotect_churn
 benchmarks/threaded_mmap_churn

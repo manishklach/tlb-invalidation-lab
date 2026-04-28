@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import sys
 
 
 def parse_args():
@@ -33,6 +34,9 @@ def main():
             total_invalidations += inv
             total_bytes += int(row["bytes_invalidated"])
             weighted_fanout += float(row["avg_fanout"]) * inv
+
+    if total_invalidations == 0 and total_bytes == 0:
+        print("warning=no_events_observed", file=sys.stderr)
 
     invalidations_per_sec = total_invalidations / args.window_seconds
     bytes_per_sec = total_bytes / args.window_seconds

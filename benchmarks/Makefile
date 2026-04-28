@@ -1,5 +1,5 @@
 CC ?= gcc
-CFLAGS ?= -O2 -Wall -Wextra -pthread
+CFLAGS ?= -O2 -Wall -Wextra -std=c11 -pthread
 
 TARGETS := mmap_churn mprotect_churn threaded_mmap_churn
 

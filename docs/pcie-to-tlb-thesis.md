@@ -1,50 +1,51 @@
 # PCIe to TLB Thesis
 
-## Broader thesis
+## Framing
 
-High-performance AI systems are often limited by hidden variables that sit outside the headline compute unit.
+This document explains the repository's broader systems framing. It is not an argument that PCIe behavior and TLB invalidation are equivalent, and it is not a claim that either one alone explains inference performance.
 
-This repository is one piece of a broader operational thesis:
+The narrower claim is simpler:
 
-- PCIe errors degrade data movement efficiency
-- TLB invalidation activity degrades translation continuity
-
-Neither failure mode necessarily looks like a classic crash. Both can reduce effective compute capacity while leaving top-line utilization counters deceptively normal.
+- both can behave like hidden capacity reducers
+- both are easy to miss in application-level dashboards
+- both are worth instrumenting when infrastructure feels slower than its obvious counters suggest
 
 ## PCIe side
 
-At modern link rates, especially PCIe Gen5, signal-integrity margins become more important. When a system encounters link instability, it may:
+At modern link rates, especially PCIe Gen5, signal-integrity margins matter. When a platform sees link instability, it may:
 
 - retrain
 - downtrain
-- fall back
-- deliver lower effective bandwidth or higher jitter
+- retry
+- deliver lower effective bandwidth or higher variance than nominal link speed suggests
 
-The accelerator still exists. The server still boots. But useful data movement becomes less predictable.
+That does not always show up as a clean device failure. It often shows up as less predictable data movement.
 
 ## TLB side
 
-Translation invalidation is a different subsystem, but the operational pattern is similar:
+Translation invalidation is a different mechanism, but it can have a similar operational shape:
 
-- the CPU is present
+- the machine looks up
 - the threads are runnable
-- no obvious failure alarm appears
-- yet useful work is repeatedly interrupted by invalidation maintenance
+- the workload is still moving
+- useful work is nevertheless being interrupted by MMU maintenance
 
-The result is not necessarily lower peak throughput in microbenchmarks. It is often:
+Again, the observable symptom is often variance rather than collapse:
 
-- wider latency distribution
+- wider latency spread
 - straggler behavior
-- reduced job-level efficiency
+- lower effective job efficiency
 
-## Why treat them together
+## Why connect them at all
 
-Both mechanisms affect the distance between nominal capacity and effective capacity.
+The useful commonality is not subsystem identity. It is observability posture.
 
-They are hidden variables because:
+Both are examples of infrastructure effects that can reduce effective compute capacity while hiding below the first layer of common dashboards. This lab exists to instrument one of those effects: translation invalidation and its surrounding MMU activity.
 
-- they often sit below normal application telemetry
-- they can be bursty rather than constant
-- their operational signature is often jitter, not catastrophe
+## Intended takeaway
 
-That is why this repository is positioned as an observability and attribution tool. The first requirement for controlling hidden variables is making them visible enough to compare against real workload outcomes.
+The intended takeaway is intentionally modest:
+
+- if you already suspect tail-latency amplification
+- and if CPU-side memory-management work is a plausible contributor
+- then measuring invalidation activity is often more credible than guessing from utilization counters alone

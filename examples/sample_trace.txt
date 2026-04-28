@@ -1,0 +1,3 @@
+worker-123 [001] .... 100.000: tlb_invalidation: pid=4242 tgid=4242 comm=inferd start=0x1000 end=0x5000 bytes=16384 target_cpu_count=8 broadcast=0
+worker-123 [001] .... 100.001: mmu_notifier_invalidate_range: pid=4242 tgid=4242 comm=inferd start=0x1000 end=0x5000 bytes=16384 phase=start
+worker-123 [001] .... 100.002: mmu_notifier_invalidate_range: pid=4242 tgid=4242 comm=inferd start=0x1000 end=0x5000 bytes=16384 phase=end

@@ -11,7 +11,7 @@ Inference clusters often look GPU-bound from the outside, but the supporting pat
 - memory-mapped artifacts
 - process lifecycle and allocator behavior
 
-If those CPU threads are repeatedly interrupted by translation invalidation work, the effect can propagate into user-visible inference latency.
+If those CPU threads are repeatedly interrupted by translation invalidation work, the effect can propagate into user-visible inference latency. This repository is aimed at making that possibility measurable enough to investigate, not at treating it as a universal explanation.
 
 ## Common trigger patterns
 
