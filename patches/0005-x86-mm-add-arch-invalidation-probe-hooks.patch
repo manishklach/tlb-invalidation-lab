@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000005 Mon Sep 17 00:00:00 2001
+From: tlb-invalidation-lab <lab@example.com>
+Date: Mon, 27 Apr 2026 10:04:00 -0700
+Subject: [PATCH 5/6] x86/mm: sketch arch invalidation probe hooks
+
+This is a lab-oriented sketch showing where x86 invalidation paths could
+surface more architecture-specific observability fields. It is not
+presented as upstream-ready code.
+---
+ arch/x86/mm/tlb.c          | 16 ++++++++++++++++
+ include/trace/events/tlb.h | 31 +++++++++++++++++++++++++++++++
+ 2 files changed, 47 insertions(+)
+
+diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
+index 222222222222..555555555555 100644
+--- a/arch/x86/mm/tlb.c
++++ b/arch/x86/mm/tlb.c
+@@ -1038,6 +1038,22 @@ static __always_inline void trace_tlb_invalidation_event(unsigned long start,
+ 	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
+ 			       current->comm, start, end, range_size,
+ 			       cpu_count, broadcast);
++	trace_tlb_arch_invalidation(task_pid_nr(current), task_tgid_nr(current),
++				    current->comm, start, end,
++				    range_size >> PAGE_SHIFT,
++				    cpu_count > 1,
++#ifdef X86_FEATURE_INVLPGB
++				    broadcast ? "invlpgb" :
++#endif
++#ifdef X86_FEATURE_INVPCID
++				    boot_cpu_has(X86_FEATURE_INVPCID) &&
++				    range_size > PAGE_SIZE ? "invpcid" :
++#endif
++				    range_size <= PAGE_SIZE ? "invlpg" :
++				    "unknown");
+ }
+diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
+index 333333333333..666666666666 100644
+--- a/include/trace/events/tlb.h
++++ b/include/trace/events/tlb.h
+@@ -42,6 +42,37 @@ TRACE_EVENT(tlb_invalidation,
+ 		  __entry->target_cpu_count, __entry->broadcast)
+ );
+ 
++TRACE_EVENT(tlb_arch_invalidation,
++	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
++		 unsigned long start, unsigned long end,
++		 unsigned long range_pages, bool local_or_remote,
++		 const char *instruction_family),
++	TP_ARGS(pid, tgid, comm, start, end, range_pages,
++		local_or_remote, instruction_family),
++	TP_STRUCT__entry(
++		__field(pid_t, pid)
++		__field(pid_t, tgid)
++		__string(comm, comm)
++		__field(unsigned long, start)
++		__field(unsigned long, end)
++		__field(unsigned long, range_pages)
++		__field(bool, local_or_remote)
++		__string(instruction_family, instruction_family)
++	),
++	TP_fast_assign(
++		__entry->pid = pid;
++		__entry->tgid = tgid;
++		__assign_str(comm, comm);
++		__entry->start = start;
++		__entry->end = end;
++		__entry->range_pages = range_pages;
++		__entry->local_or_remote = local_or_remote;
++		__assign_str(instruction_family, instruction_family);
++	),
++	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx range_pages=%lu local_or_remote=%s instruction_family=%s",
++		  __entry->pid, __entry->tgid, __get_str(comm),
++		  __entry->start, __entry->end, __entry->range_pages,
++		  __entry->local_or_remote ? "remote" : "local",
++		  __get_str(instruction_family))
++);
+-- 
+2.43.0

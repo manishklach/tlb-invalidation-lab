@@ -1,0 +1,10 @@
+synthetic_example=1
+workload_label=inference_lab_capture
+observation_window_sec=10
+top_process=inferd
+tlb_invalidations=184
+mmu_notifier_events=368
+bytes_invalidated=12058624
+avg_target_cpu_count=11.40
+likely_broadcast_capable_events=0
+note=synthetic example output for documentation; not measured production data

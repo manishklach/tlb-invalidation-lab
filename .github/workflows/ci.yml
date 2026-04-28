@@ -23,5 +23,16 @@ jobs:
           python tools/parse_trace.py examples/sample_trace.txt --csv /tmp/sample_trace.csv >/tmp/parse_stdout.csv
           python tools/tlb_health_score.py /tmp/sample_trace.csv --window-seconds 10 >/tmp/health.txt
 
+      - name: Check architecture probe files
+        run: |
+          test -f arch-probes/README.md
+          test -f arch-probes/x86_64/invlpg_probe.h
+          test -f arch-probes/x86_64/invpcid_probe.h
+          test -f arch-probes/x86_64/tlb_probe_module.c
+          test -f arch-probes/x86_64/Makefile
+          test -f arch-probes/arm64/tlbi_probe.h
+          test -f arch-probes/arm64/tlb_probe_module.c
+          test -f arch-probes/arm64/Makefile
+
       - name: Build benchmarks
         run: make -C benchmarks

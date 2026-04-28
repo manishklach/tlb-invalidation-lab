@@ -78,6 +78,7 @@ On modern platforms, especially those pushing PCIe Gen5 margins, signal-integrit
 - tracepoints for x86 TLB invalidation and MMU notifier activity
 - an experimental procfs design sketch for `/proc/<pid>/tlb_stats`
 - a sysfs capability view for broadcast invalidation-related CPU support
+- educational x86-64 and arm64 architecture probe modules
 - trace collection and parsing tools
 - a lightweight health scoring tool
 - a minimal Prometheus exporter
@@ -91,6 +92,7 @@ tlb-invalidation-lab/
 ├── README.md
 ├── LICENSE
 ├── docs/
+├── arch-probes/
 ├── examples/
 ├── patches/
 ├── tools/
@@ -130,6 +132,14 @@ Documents an explicitly experimental procfs sketch rather than pretending to pro
 
 Adds a small sysfs interface to expose whether the running system advertises hardware capability related to broadcast invalidation assistance. It does not implement new invalidation instructions and does not claim invention.
 
+### `0005-x86-mm-add-arch-invalidation-probe-hooks.patch`
+
+Sketches how x86 invalidation paths could expose architecture-flavored fields such as instruction family, local-versus-remote scope, and range size in pages.
+
+### `0006-arm64-mm-add-arch-invalidation-probe-hooks.patch`
+
+Sketches how arm64 TLBI paths could expose scope, range size, and barrier-phase context for observability.
+
 ## Quick start
 
 ### 1. Clone the repository
@@ -150,6 +160,7 @@ git apply /path/to/tlb-invalidation-lab/patches/0002-mm-add-mmu-notifier-invalid
 git apply /path/to/tlb-invalidation-lab/patches/0004-x86-mm-expose-broadcast-invalidation-capability.patch
 
 # 0003 is a design sketch, not a recommended default patch to apply.
+# 0005 and 0006 are architecture-hook sketches, not upstream-ready patches.
 ```
 
 Rebuild and boot the instrumented kernel using your standard workflow.
@@ -194,6 +205,32 @@ python3 tools/prometheus_exporter.py --input out/tlb_trace.csv --listen 0.0.0.0 
 
 The exporter is designed to expose an error metric rather than crash if the input file is missing or malformed.
 
+## Architecture probe modules
+
+The repository also includes small educational kernel-module probes under `arch-probes/` for x86-64 and arm64. These are intentionally minimal and are not substitutes for Linux MM code.
+
+### x86-64
+
+```bash
+cd arch-probes/x86_64
+make
+sudo insmod tlb_probe_module.ko
+dmesg | tail
+sudo rmmod tlb_probe_module
+```
+
+### arm64
+
+```bash
+cd arch-probes/arm64
+make
+sudo insmod tlb_probe_module.ko
+dmesg | tail
+sudo rmmod tlb_probe_module
+```
+
+Use only on lab machines, VMs, or disposable test kernels.
+
 ## Example workflow
 
 1. Run a baseline inference workload or synthetic churn benchmark.
@@ -206,6 +243,7 @@ For a small example, see:
 
 - [examples/sample_trace.txt](examples/sample_trace.txt)
 - [examples/sample_trace.csv](examples/sample_trace.csv)
+- [examples/sample_trace_summary.txt](examples/sample_trace_summary.txt)
 - [examples/sample_health_score.txt](examples/sample_health_score.txt)
 
 ## What to look for

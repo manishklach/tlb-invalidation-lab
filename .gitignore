@@ -4,3 +4,10 @@ benchmarks/mprotect_churn
 benchmarks/threaded_mmap_churn
 __pycache__/
 *.pyc
+*.ko
+*.mod
+*.mod.c
+*.mod.o
+*.o
+*.order
+*.symvers

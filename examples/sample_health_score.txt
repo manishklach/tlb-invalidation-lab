@@ -1,3 +1,4 @@
+synthetic_example=1
 invalidations_per_sec=0.10
 bytes_invalidated_per_sec=4915.20
 avg_fanout=8.00

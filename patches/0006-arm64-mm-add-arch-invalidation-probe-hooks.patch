@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000006 Mon Sep 17 00:00:00 2001
+From: tlb-invalidation-lab <lab@example.com>
+Date: Mon, 27 Apr 2026 10:05:00 -0700
+Subject: [PATCH 6/6] arm64/mm: sketch arch invalidation probe hooks
+
+This is a lab-oriented sketch showing where arm64 TLBI paths could emit
+scope and barrier-related observability fields. It is intentionally not
+presented as upstream-ready code.
+---
+ arch/arm64/mm/tlb.c        | 20 ++++++++++++++++++++
+ include/trace/events/tlb.h | 31 +++++++++++++++++++++++++++++++
+ 2 files changed, 51 insertions(+)
+
+diff --git a/arch/arm64/mm/tlb.c b/arch/arm64/mm/tlb.c
+index 777777777777..888888888888 100644
+--- a/arch/arm64/mm/tlb.c
++++ b/arch/arm64/mm/tlb.c
+@@ -8,6 +8,7 @@
+ #include <linux/mm.h>
+ #include <linux/smp.h>
+ #include <linux/cpumask.h>
++#include <trace/events/tlb.h>
+ 
+@@ -220,6 +221,25 @@ static void __flush_tlb_range(struct vm_area_struct *vma,
+ 	dsb(ishst);
++	trace_tlb_arm64_invalidation(task_pid_nr(current), task_tgid_nr(current),
++				     current->comm, start, end,
++				     (end - start) >> PAGE_SHIFT,
++				     last_level ? "local" : "inner-shareable",
++				     "pre-tlbi");
+ 	__tlbi(vale1is, addr);
++	trace_tlb_arm64_invalidation(task_pid_nr(current), task_tgid_nr(current),
++				     current->comm, start, end,
++				     (end - start) >> PAGE_SHIFT,
++				     last_level ? "local" : "inner-shareable",
++				     "post-tlbi");
+ 	dsb(ish);
++	trace_tlb_arm64_invalidation(task_pid_nr(current), task_tgid_nr(current),
++				     current->comm, start, end,
++				     (end - start) >> PAGE_SHIFT,
++				     last_level ? "local" : "inner-shareable",
++				     "post-dsb-ish");
+ 	isb();
+ }
+diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
+index 666666666666..999999999999 100644
+--- a/include/trace/events/tlb.h
++++ b/include/trace/events/tlb.h
+@@ -73,3 +73,34 @@ TRACE_EVENT(tlb_arch_invalidation,
+ 		  __entry->local_or_remote ? "remote" : "local",
+ 		  __get_str(instruction_family))
+ );
++TRACE_EVENT(tlb_arm64_invalidation,
++	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
++		 unsigned long start, unsigned long end,
++		 unsigned long range_pages, const char *tlbi_scope,
++		 const char *barrier_phase),
++	TP_ARGS(pid, tgid, comm, start, end, range_pages,
++		tlbi_scope, barrier_phase),
++	TP_STRUCT__entry(
++		__field(pid_t, pid)
++		__field(pid_t, tgid)
++		__string(comm, comm)
++		__field(unsigned long, start)
++		__field(unsigned long, end)
++		__field(unsigned long, range_pages)
++		__string(tlbi_scope, tlbi_scope)
++		__string(barrier_phase, barrier_phase)
++	),
++	TP_fast_assign(
++		__entry->pid = pid;
++		__entry->tgid = tgid;
++		__assign_str(comm, comm);
++		__entry->start = start;
++		__entry->end = end;
++		__entry->range_pages = range_pages;
++		__assign_str(tlbi_scope, tlbi_scope);
++		__assign_str(barrier_phase, barrier_phase);
++	),
++	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx range_pages=%lu tlbi_scope=%s barrier_phase=%s",
++		  __entry->pid, __entry->tgid, __get_str(comm),
++		  __entry->start, __entry->end, __entry->range_pages,
++		  __get_str(tlbi_scope), __get_str(barrier_phase))
++);
+-- 
+2.43.0
