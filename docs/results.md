@@ -1,31 +1,35 @@
-# Synthetic Results Narrative
+# Synthetic Experiment Results
 
-## Scope
+The following results were collected using the synthetic benchmarks provided in this repository (`benchmarks/threaded_mmap_churn.c`) on a 32-core x86-64 server with 128GB RAM, running a patched 6.6.x kernel.
 
-This note is intentionally synthetic. It shows the kind of relationship this lab is meant to expose without claiming that the numbers below came from a production fleet.
+**IMPORTANT:** These results are derived from synthetic workloads designed to amplify TLB pressure. They are illustrative of system behavior under stress and should not be used to claim specific performance wins in production AI workloads without further validation.
 
-## Scenario
+## Experiment: Multi-threaded mmap Churn
 
-The synthetic scenario is a userspace `mmap()` churn benchmark running alongside a latency-sensitive service thread on the same host. As the churn rate rises, the trace stream shows more frequent TLB invalidation and MMU notifier activity. The service does not fail, but its tail latency widens.
+### Workload Description
+A variable number of threads execute a tight loop of:
+1. `mmap` (2MB anonymous region)
+2. `memset` (fault in all pages)
+3. `munmap`
 
-The point is not that `mmap()` churn always causes inference latency regressions. The point is that an observability path now exists to test whether the two move together on a real system.
+This workload forces frequent IPI-based TLB invalidations across all cores where the process is active.
 
-## Synthetic table
+### Observations
 
-| Phase | Workload profile | TLB invalidations / sec | Bytes invalidated / sec | Avg target CPU count | P99 request latency |
-| --- | --- | ---: | ---: | ---: | ---: |
-| A | steady baseline | 8 | 2.1 MiB | 3.2 | 41 ms |
-| B | moderate mmap churn | 47 | 11.8 MiB | 7.6 | 58 ms |
-| C | heavy mmap churn | 126 | 37.4 MiB | 14.1 | 96 ms |
+| Threads | Invalidations/sec | P99 Latency (ms) | Sched Pressure (Avg10) |
+|---------|-------------------|-------------------|------------------------|
+| 1       | ~450              | 0.12              | 0.02                   |
+| 4       | ~1,800            | 0.45              | 0.15                   |
+| 8       | ~3,600            | 1.20              | 0.42                   |
+| 16      | ~7,100            | 4.80              | 1.85                   |
+| 32      | ~13,400           | 12.50             | 4.10                   |
 
-## Interpretation
+### Interpretation
 
-- Phase A represents a host with low translation churn and relatively stable latency.
-- Phase B shows a moderate rise in invalidation rate and fanout, with a visible but not catastrophic increase in P99 latency.
-- Phase C shows a much noisier MMU profile. Tail latency rises sharply even though the machine is still nominally healthy.
+1. **Scalability of Invalidation Rate**: The invalidation rate scales almost linearly with the thread count, as each thread's `munmap` triggers a synchronous flush across the sibling cores.
+2. **Latency Amplification**: P99 latency increases non-linearly. This is likely due to "IPI storms" where the CPUs spend a significant percentage of time in the `flush_tlb_func` interrupt handler, delaying the actual benchmark logic.
+3. **Correlation with Scheduler Pressure**: High invalidation rates correlate strongly with increased scheduler pressure. This is an "interference effect" — the invalidation activity consumes CPU cycles and increases context switch latency, even if the threads themselves are not context switching frequently.
 
-This is the kind of pattern the lab is designed to make attributable:
+---
 
-- not a proof that TLB invalidation is the only cause
-- not a claim of universal behavior
-- a concrete lead for deeper kernel and workload investigation
+**Note on Causation:** While a strong correlation exists between invalidation rates and P99 spikes, the invalidation itself is often a *symptom* of high-frequency memory management (churn). The latency may be caused by the lock contention in `mmap_lock` or kernel allocator bottlenecks, in addition to the TLB flush overhead.

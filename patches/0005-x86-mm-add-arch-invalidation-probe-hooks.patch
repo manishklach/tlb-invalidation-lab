@@ -3,9 +3,13 @@ From: tlb-invalidation-lab <lab@example.com>
 Date: Mon, 27 Apr 2026 10:04:00 -0700
 Subject: [PATCH 5/6] x86/mm: sketch arch invalidation probe hooks
 
-This is a lab-oriented sketch showing where x86 invalidation paths could
-surface more architecture-specific observability fields. It is not
-presented as upstream-ready code.
+Introduce architectural classification for x86 TLB invalidation events. 
+This patch adds a best-effort tracepoint to distinguish between 
+instruction families (INVLPG, INVPCID, INVLPGB) based on the invalidation 
+context and hardware capabilities.
+
+This is a research-grade sketch for system-level debugging and is not 
+intended for production deployment.
 ---
  arch/x86/mm/tlb.c          | 38 ++++++++++++++++++++++++++++++++++++++
  include/trace/events/tlb.h | 40 ++++++++++++++++++++++++++++++++++++++++

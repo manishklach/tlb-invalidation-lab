@@ -1,76 +1,30 @@
 # tlb-invalidation-lab
 
-Making TLB invalidation observable, attributable, and measurable in modern AI workloads.
+**Observability and attribution for translation invalidation in AI infrastructure.**
 
-`tlb-invalidation-lab` is an observability and attribution lab for a part of Linux performance that is often felt before it is seen: translation invalidation activity.
+Modern AI systems optimize compute and bandwidth, but often ignore how frequently they invalidate their own memory translations. `tlb-invalidation-lab` is a high-credibility research and debugging toolkit designed to make TLB invalidation observable, attributable, and measurable.
 
-AI inference stacks are often described as GPU-bound. That description is directionally true, but incomplete. Modern inference nodes also depend on CPU-side memory-management paths for pinned memory, GPU UVM interactions, RDMA buffers, allocator churn, memory-mapped state, and process lifecycle noise. When those paths trigger TLB invalidations, remote invalidation work and page-table synchronization can interrupt CPU progress, perturb scheduling, and widen tail latency.
+---
 
-This repository does not claim a magic fix. It does not rewrite the kernel, replace the MM subsystem, or promise direct GPU acceleration.
+## 🎯 What this reveals
 
-It does provide a practical way to answer a harder and more useful question:
+Translation invalidation is often a "hidden tax" on AI infrastructure. This toolkit reveals:
 
-> The GPU is not always slow because the GPU is slow.  
-> Sometimes the memory translation subsystem is disrupting execution.
+*   **Invalidation bursts preceding latency spikes**: Correlate MMU activity with P99 tail latency in distributed inference.
+*   **GPU underutilization during MMU pressure**: Identify windows where host-side translation churn stalls GPU-to-host or host-to-GPU data movement.
+*   **Scheduler contention**: See how TLB-related IPI storms amplify scheduler pressure and interrupt critical-path threads.
 
-## Status
+---
 
-This repository is a research and debugging lab patch set. It is intended to help engineers inspect translation invalidation behavior, prototype instrumentation ideas, and correlate MMU activity with latency symptoms.
+## 🚨 Constraints & Limitations
 
-It is not upstream-ready production kernel code, and it should not be read as a claim that the included patches are suitable for broad deployment without kernel-version-specific review and validation.
+*   **Observability First**: This toolkit is designed for correlation and attribution. It does **not** claim causal performance improvements unless proven through controlled experiments.
+*   **Research Patches**: The provided patches are lab artifacts. They are minimal, realistic, but intentionally not presented as upstream-ready.
+*   **Instrumentation Requirement**: Full signal requires kernel instrumentation. While tools fallback gracefully, the most valuable insights come from the custom tracepoints.
+*   **Correlation ≠ Causation**: The tools align signals in time, but they cannot prove causality.
+*   **Architecture Variance**: Invalidation behavior and overhead vary significantly across CPU generations and architectures.
 
-## Safety
-
-Test these patches only on non-production kernels, development hosts, or disposable VMs first.
-
-- do not apply the patch set directly to production kernels without review
-- treat the procfs sketch as experimental design material, not a production interface
-- validate tracepoint overhead and behavior in your own kernel tree before relying on the results
-
-## Why this matters
-
-In large inference systems, the visible symptom is often simple:
-
-- tokens arrive late
-- one worker becomes a straggler
-- batch completion spreads out
-- P99 latency grows while averages still look acceptable
-
-The hidden cause can be less obvious. TLB invalidation bursts can force CPUs to stop useful work, service IPIs, synchronize address-space updates, and re-establish translation state. On nodes that also manage networking, storage, orchestration, and GPU runtime control paths, those interruptions can show up as jitter rather than an obvious fault.
-
-That matters because modern AI jobs amplify outliers.
-
-### Tail latency and the straggler effect
-
-P99 latency is the latency seen by the slowest 1 percent of requests or operations. In distributed inference, that tail matters disproportionately:
-
-- one noisy node can delay a coordinated batch
-- one control-plane CPU can become the pacing item for a GPU server
-- one worker with repeated invalidation bursts can stretch end-to-end completion time
-
-In other words, even when average throughput looks stable, invalidation-driven CPU disruption can still lower effective cluster capacity.
-
-## Why AI workloads can trigger MMU activity
-
-The repo focuses on patterns that commonly appear in modern inference and adjacent infrastructure:
-
-- pinned host memory used for DMA and staging paths
-- GPU UVM migrations and notifier-driven invalidation coordination
-- RDMA buffer registration and teardown
-- `mmap()` / `munmap()` churn from short-lived mappings
-- memory-mapped model artifacts or KV-cache-adjacent state
-- allocator pressure that repeatedly changes protections or virtual layout
-
-These are not bugs by themselves. They are normal systems behaviors. The goal here is to make their invalidation side effects visible enough to correlate with user-visible performance.
-
-## Hardware nuance
-
-This repo also sits inside a broader systems thesis: hidden infrastructure variables often degrade effective compute without looking like compute failures.
-
-- PCIe errors can degrade data movement and trigger fallback or downtraining
-- TLB invalidation activity can degrade address-translation continuity and interrupt CPU execution
-
-On modern platforms, especially those pushing PCIe Gen5 margins, signal-integrity sensitivity and link instability can already make throughput less deterministic than nominal specs suggest. Translation disruption is a different mechanism, but it belongs in the same category of hidden capacity loss: the machine is present, powered on, and seemingly healthy, yet useful work arrives later than expected.
+---
 
 ## What this repository provides
 

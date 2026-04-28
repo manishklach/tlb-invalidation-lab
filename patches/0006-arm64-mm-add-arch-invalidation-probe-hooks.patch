@@ -3,9 +3,13 @@ From: tlb-invalidation-lab <lab@example.com>
 Date: Mon, 27 Apr 2026 10:05:00 -0700
 Subject: [PATCH 6/6] arm64/mm: sketch arch invalidation probe hooks
 
-This is a lab-oriented sketch showing where arm64 TLBI paths could emit
-scope and range-related observability fields. It is intentionally not
-presented as upstream-ready code.
+Add a research-oriented tracepoint to arm64 TLB invalidation paths. This 
+sketch provides observability into invalidation scope and page counts 
+during range-based flushes.
+
+This is a lab artifact for performance correlation analysis and is not 
+intended for upstream submission. It focuses on the inner-shareable 
+translation regime common in multi-core AI server environments.
 ---
  arch/arm64/include/asm/tlbflush.h | 19 +++++++++++++++++++
  arch/arm64/mm/flush.c             |  3 +++

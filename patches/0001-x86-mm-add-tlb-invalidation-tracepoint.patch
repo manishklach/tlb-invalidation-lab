@@ -3,12 +3,17 @@ From: tlb-invalidation-lab <lab@example.com>
 Date: Mon, 27 Apr 2026 10:00:00 -0700
 Subject: [PATCH 1/4] x86/mm: add tlb invalidation tracepoint
 
-Add an x86-focused tracepoint for invalidation ranges so that users can
-measure invalidation frequency, bytes invalidated, and rough fanout
-without adding expensive formatting to the hot path.
+Add a high-signal tracepoint for TLB invalidation events on x86. This 
+event captures invalidation ranges, fanout (target CPU count), and 
+broadcast capability hints.
 
-This is a research patch for observability work. It is intentionally not
-presented as upstream-ready code.
+To minimize overhead in the hot path, the expensive architectural 
+calculations (such as cpumask_weight) are gated behind a 
+trace_tlb_invalidation_enabled() check, ensuring zero cost when tracing 
+is inactive.
+
+This is a research-grade observability artifact and is not intended for 
+upstream submission.
 ---
  arch/x86/mm/tlb.c          | 33 ++++++++++++++++++++++++++++++++-
  include/trace/events/tlb.h | 32 ++++++++++++++++++++++++++++++++
@@ -43,10 +48,12 @@ index 111111111111..222222222222 100644
 +	int target_cpu_count = 0;
 +	bool broadcast = false;
 +
++	if (!trace_tlb_invalidation_enabled())
++		return;
++
 +	/*
 +	 * tlb-invalidation-lab: research patch sketch, not upstream-ready.
-+	 * Keep the event cheap and avoid claiming more precision than the
-+	 * invalidation path can provide here.
++	 * cpumask_weight is O(N); we only pay this cost when tracing is active.
 +	 */
 +	if (info->end != TLB_FLUSH_ALL && info->end > info->start)
 +		range_size = info->end - info->start;

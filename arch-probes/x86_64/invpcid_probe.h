@@ -31,20 +31,25 @@ static inline bool lab_invpcid_available(void)
 static inline int lab_invpcid_single_addr(const struct lab_invpcid_desc *desc,
 					  u64 type)
 {
-	(void)desc;
-	(void)type;
-
 #ifdef LAB_ENABLE_X86_INVPCID_DEMO
-	/*
-	 * Intentionally omitted by default. If enabled in a private lab
-	 * fork, the caller must still validate instruction support and
-	 * type semantics before using inline assembly here.
-	 */
 	if (!lab_invpcid_available())
 		return -EOPNOTSUPP;
-#endif
 
+	/*
+	 * AT&T syntax: invpcid src_reg, mem_operand
+	 * %0: type (register)
+	 * %1: descriptor (memory)
+	 */
+	asm volatile("invpcid %0, %1"
+		     :
+		     : "r" (type), "m" (*desc)
+		     : "memory");
+	return 0;
+#else
+	(void)desc;
+	(void)type;
 	return -EOPNOTSUPP;
+#endif
 }
 
 #endif /* LAB_X86_64_INVPCID_PROBE_H */
