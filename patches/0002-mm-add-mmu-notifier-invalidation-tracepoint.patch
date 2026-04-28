@@ -1,18 +1,18 @@
 From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
 From: tlb-invalidation-lab <lab@example.com>
-Date: Mon, 27 Apr 2026 10:01:00 -0700
-Subject: [PATCH 2/4] mm: add mmu notifier invalidation tracepoint
+Date: Tue, 28 Apr 2026 06:01:00 -0700
+Subject: [PATCH 2/4] mm: add NUMA-aware mmu notifier invalidation tracepoint
 
-Add tracepoints around MMU notifier invalidation start/end so notifier
-activity can be correlated with TLB invalidation bursts and AI runtime
-subsystems such as UVM- or RDMA-adjacent invalidation paths.
+Add tracepoints around MMU notifier invalidation start/end with 
+NUMA node awareness. This allows correlating cross-socket memory 
+pressure with AI runtime subsystems (UVM, RDMA, etc.).
 
 This is a research patch for lab use. It is intentionally not presented
 as upstream-ready code.
 ---
- include/trace/events/mmu.h | 49 +++++++++++++++++++++++++++++++++++++++++++++
+ include/trace/events/mmu.h | 53 ++++++++++++++++++++++++++++++++++++++++++++++
  mm/mmu_notifier.c          | 11 +++++++++++
- 2 files changed, 60 insertions(+)
+ 2 files changed, 64 insertions(+)
  create mode 100644 include/trace/events/mmu.h
 
 diff --git a/include/trace/events/mmu.h b/include/trace/events/mmu.h
@@ -20,7 +20,7 @@ new file mode 100644
 index 000000000000..444444444444
 --- /dev/null
 +++ b/include/trace/events/mmu.h
-@@ -0,0 +1,49 @@
+@@ -0,0 +1,53 @@
 +/* SPDX-License-Identifier: GPL-2.0 */
 +#undef TRACE_SYSTEM
 +#define TRACE_SYSTEM mmu
@@ -33,8 +33,8 @@ index 000000000000..444444444444
 +TRACE_EVENT(mmu_notifier_invalidate_range,
 +	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
 +		 unsigned long start, unsigned long end,
-+		 unsigned long range_size, int phase),
-+	TP_ARGS(pid, tgid, comm, start, end, range_size, phase),
++		 unsigned long range_size, int phase, int node),
++	TP_ARGS(pid, tgid, comm, start, end, range_size, phase, node),
 +	TP_STRUCT__entry(
 +		__field(pid_t, pid)
 +		__field(pid_t, tgid)
@@ -43,6 +43,7 @@ index 000000000000..444444444444
 +		__field(unsigned long, end)
 +		__field(unsigned long, range_size)
 +		__field(int, phase)
++		__field(int, node)
 +	),
 +	TP_fast_assign(
 +		__entry->pid = pid;
@@ -52,11 +53,12 @@ index 000000000000..444444444444
 +		__entry->end = end;
 +		__entry->range_size = range_size;
 +		__entry->phase = phase;
++		__entry->node = node;
 +	),
-+	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu phase=%s",
++	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu phase=%s node=%d",
 +		  __entry->pid, __entry->tgid, __get_str(comm),
 +		  __entry->start, __entry->end, __entry->range_size,
-+		  __entry->phase ? "end" : "start")
++		  __entry->phase ? "end" : "start", __entry->node)
 +);
 +
 +#endif /* _TRACE_MMU_H */
@@ -92,7 +94,7 @@ index 555555555555..666666666666 100644
  
 +	/* tlb-invalidation-lab: research patch sketch, not upstream-ready. */
 +	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
-+		task_tgid_nr(current), current->comm, range->start, range->end, size, 0);
++		task_tgid_nr(current), current->comm, range->start, range->end, size, 0, numa_node_id());
  	id = srcu_read_lock(&srcu);
  	hlist_for_each_entry_rcu(subscription, &subscriptions->list, hlist,
  				 srcu_read_lock_held(&srcu))
@@ -110,7 +112,7 @@ index 555555555555..666666666666 100644
  				 srcu_read_lock_held(&srcu))
  		__mmu_notifier_invalidate_range_end(range);
 +	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
-+		task_tgid_nr(current), current->comm, range->start, range->end, size, 1);
++		task_tgid_nr(current), current->comm, range->start, range->end, size, 1, numa_node_id());
  	srcu_read_unlock(&srcu, range->id);
  	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
  }

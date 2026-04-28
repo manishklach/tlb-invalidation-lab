@@ -1,23 +1,25 @@
 From 0000000000000000000000000000000000000001 Mon Sep 17 00:00:00 2001
 From: tlb-invalidation-lab <lab@example.com>
-Date: Mon, 27 Apr 2026 10:00:00 -0700
-Subject: [PATCH 1/4] x86/mm: add tlb invalidation tracepoint
+Date: Tue, 28 Apr 2026 06:00:00 -0700
+Subject: [PATCH 1/4] x86/mm: add NUMA-aware tlb invalidation tracepoint
 
-Add a high-signal tracepoint for TLB invalidation events on x86. This 
-event captures invalidation ranges, fanout (target CPU count), and 
-broadcast capability hints.
+Add a high-signal, NUMA-aware tracepoint for TLB invalidation events 
+on x86. This event captures:
+- process context (pid, tgid, comm)
+- invalidation ranges (start, end, bytes)
+- fanout (target CPU count)
+- broadcast capability hints (INVLPGB)
+- NUMA node of the source CPU
 
-To minimize overhead in the hot path, the expensive architectural 
-calculations (such as cpumask_weight) are gated behind a 
-trace_tlb_invalidation_enabled() check, ensuring zero cost when tracing 
-is inactive.
+To minimize overhead in the hot path, expensive calculations are 
+gated behind trace_tlb_invalidation_enabled().
 
 This is a research-grade observability artifact and is not intended for 
 upstream submission.
 ---
- arch/x86/mm/tlb.c          | 33 ++++++++++++++++++++++++++++++++-
- include/trace/events/tlb.h | 32 ++++++++++++++++++++++++++++++++
- 2 files changed, 64 insertions(+), 1 deletion(-)
+ arch/x86/mm/tlb.c          | 35 ++++++++++++++++++++++++++++++++-
+ include/trace/events/tlb.h | 36 ++++++++++++++++++++++++++++++++
+ 2 files changed, 70 insertions(+), 1 deletion(-)
 
 diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
 index 111111111111..222222222222 100644
@@ -36,7 +38,7 @@ index 111111111111..222222222222 100644
  #include <linux/task_work.h>
  #include <linux/mmu_notifier.h>
  
-@@ -1028,6 +1032,34 @@ static bool tlb_is_not_lazy(int cpu, void *data)
+@@ -1028,6 +1032,36 @@ static bool tlb_is_not_lazy(int cpu, void *data)
  	return !per_cpu(cpu_tlbstate_shared.is_lazy, cpu);
  }
  
@@ -46,6 +48,7 @@ index 111111111111..222222222222 100644
 +{
 +	unsigned long range_size = 0;
 +	int target_cpu_count = 0;
++	int node = numa_node_id();
 +	bool broadcast = false;
 +
 +	if (!trace_tlb_invalidation_enabled())
@@ -69,13 +72,13 @@ index 111111111111..222222222222 100644
 +
 +	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
 +			       current->comm, info->start, info->end,
-+			       range_size, target_cpu_count, broadcast);
++			       range_size, target_cpu_count, broadcast, node);
 +}
 +
  DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state_shared, cpu_tlbstate_shared);
  EXPORT_PER_CPU_SYMBOL(cpu_tlbstate_shared);
  
-@@ -1044,7 +1076,8 @@ STATIC_NOPV void native_flush_tlb_multi(const struct cpumask *cpumask,
+@@ -1044,7 +1078,8 @@ STATIC_NOPV void native_flush_tlb_multi(const struct cpumask *cpumask,
  		trace_tlb_flush(TLB_REMOTE_SEND_IPI,
  				(info->end - info->start) >> PAGE_SHIFT);
  
@@ -89,7 +92,7 @@ diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
 index 333333333333..444444444444 100644
 --- a/include/trace/events/tlb.h
 +++ b/include/trace/events/tlb.h
-@@ -34,6 +34,38 @@ TRACE_EVENT(tlb_flush,
+@@ -34,6 +34,42 @@ TRACE_EVENT(tlb_flush,
  		__entry->reason)
  );
  
@@ -97,9 +100,9 @@ index 333333333333..444444444444 100644
 +	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
 +		 unsigned long start, unsigned long end,
 +		 unsigned long range_size, int target_cpu_count,
-+		 bool broadcast),
++		 bool broadcast, int node),
 +	TP_ARGS(pid, tgid, comm, start, end, range_size,
-+		target_cpu_count, broadcast),
++		target_cpu_count, broadcast, node),
 +	TP_STRUCT__entry(
 +		__field(pid_t, pid)
 +		__field(pid_t, tgid)
@@ -109,6 +112,7 @@ index 333333333333..444444444444 100644
 +		__field(unsigned long, range_size)
 +		__field(int, target_cpu_count)
 +		__field(bool, broadcast)
++		__field(int, node)
 +	),
 +	TP_fast_assign(
 +		__entry->pid = pid;
@@ -119,11 +123,12 @@ index 333333333333..444444444444 100644
 +		__entry->range_size = range_size;
 +		__entry->target_cpu_count = target_cpu_count;
 +		__entry->broadcast = broadcast;
++		__entry->node = node;
 +	),
-+	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu target_cpu_count=%d broadcast=%d",
++	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu target_cpu_count=%d broadcast=%d node=%d",
 +		  __entry->pid, __entry->tgid, __get_str(comm),
 +		  __entry->start, __entry->end, __entry->range_size,
-+		  __entry->target_cpu_count, __entry->broadcast)
++		  __entry->target_cpu_count, __entry->broadcast, __entry->node)
 +);
 +
  #endif /* _TRACE_TLB_H */
