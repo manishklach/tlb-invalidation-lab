@@ -312,6 +312,16 @@ For the aligned signal workflow specifically, see `docs/correlation-and-visualiz
 - correlation tooling can align signals in time, but it cannot prove causality without controlled experiments
 - GPU sampling depends on `nvidia-smi`; systems without NVIDIA GPUs will get an empty but valid GPU CSV
 
+## Next Directions
+
+Planned areas for future exploration and hardening:
+
+* **eBPF Backport**: Develop an eBPF-based collector using `kprobes` on `native_flush_tlb_multi` for systems where kernel patching is not feasible.
+* **NUMA Awareness**: Incorporate NUMA node IDs into trace outputs to identify if invalidation storms are localized to specific memory controllers or cross-socket fabrics.
+* **Deeper Scheduler Correlation**: Better alignment between task migration events and invalidation bursts.
+* **GPU Runtime Integration**: Direct visibility into UVM (Unified Virtual Memory) eviction events.
+* **Adaptive Alerting**: Thresholds that adjust based on workload class (e.g., training vs. low-latency inference).
+
 ## Audience
 
 This repository is for:

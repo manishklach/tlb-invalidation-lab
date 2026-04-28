@@ -16,3 +16,8 @@
 - Attribution of invalidation activity to specific PIDs.
 - Correlation of translation churn with P99 latency and GPU stalls.
 - Measurement of broadcast invalidation fanout.
+
+### Roadmap
+- **eBPF Backport**: Non-invasive collection via `kprobes`. 
+- **NUMA Awareness**: Per-socket/per-controller invalidation attribution. 
+- **GPU UVM Integration**: Correlating MMU notifiers with GPU-side page faults.
