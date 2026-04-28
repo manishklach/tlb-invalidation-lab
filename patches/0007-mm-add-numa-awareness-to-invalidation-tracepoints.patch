@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000007 Mon Sep 17 00:00:00 2001
+From: tlb-invalidation-lab <lab@example.com>
+Date: Tue, 28 Apr 2026 06:10:00 -0700
+Subject: [PATCH 7/7] mm: add NUMA awareness to invalidation tracepoints
+
+Inject NUMA node IDs into both the x86 TLB invalidation and the 
+generic MMU notifier tracepoints. This allows researchers to 
+identify if invalidation storms are localized to specific sockets 
+or memory controllers.
+
+This is a research-grade observability artifact.
+---
+ arch/x86/mm/tlb.c          | 5 ++++-
+ include/trace/events/mmu.h | 4 +++-
+ include/trace/events/tlb.h | 4 +++-
+ mm/mmu_notifier.c          | 4 ++--
+ 4 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
+index 222222222222..333333333333 100644
+--- a/arch/x86/mm/tlb.c
++++ b/arch/x86/mm/tlb.c
+@@ -1038,6 +1038,7 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+ {
+ 	unsigned long range_size = 0;
+ 	int target_cpu_count = 0;
++	int node = numa_node_id();
+ 	bool broadcast = false;
+ 
+ 	if (!trace_tlb_invalidation_enabled())
+@@ -1060,7 +1061,7 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+ 
+ 	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
+ 			       current->comm, info->start, info->end,
+-			       range_size, target_cpu_count, broadcast);
++			       range_size, target_cpu_count, broadcast, node);
+ }
+ 
+ DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state_shared, cpu_tlbstate_shared);
+diff --git a/include/trace/events/mmu.h b/include/trace/events/mmu.h
+index 444444444444..555555555555 100644
+--- a/include/trace/events/mmu.h
++++ b/include/trace/events/mmu.h
+@@ -10,7 +10,7 @@
+ TRACE_EVENT(mmu_notifier_invalidate_range,
+ 	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
+ 		 unsigned long start, unsigned long end,
+-		 unsigned long range_size, int phase),
++		 unsigned long range_size, int phase, int node),
+ 	TP_ARGS(pid, tgid, comm, start, end, range_size, phase),
+ 	TP_STRUCT__entry(
+ 		__field(pid_t, pid)
+@@ -20,6 +20,7 @@ TRACE_EVENT(mmu_notifier_invalidate_range,
+ 		__field(unsigned long, end)
+ 		__field(unsigned long, range_size)
+ 		__field(int, phase)
++		__field(int, node)
+ 	),
+ 	TP_fast_assign(
+ 		__entry->pid = pid;
+@@ -29,6 +30,7 @@ TRACE_EVENT(mmu_notifier_invalidate_range,
+ 		__entry->end = end;
+ 		__entry->range_size = range_size;
+ 		__entry->phase = phase;
++		__entry->node = node;
+ 	),
+ 	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu phase=%s node=%d",
+ 		  __entry->pid, __entry->tgid, __get_str(comm),
+diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
+index 444444444444..555555555555 100644
+--- a/include/trace/events/tlb.h
++++ b/include/trace/events/tlb.h
+@@ -38,7 +38,7 @@ TRACE_EVENT(tlb_invalidation,
+ 	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
+ 		 unsigned long start, unsigned long end,
+ 		 unsigned long range_size, int target_cpu_count,
+-		 bool broadcast),
++		 bool broadcast, int node),
+ 	TP_ARGS(pid, tgid, comm, start, end, range_size,
+ 		target_cpu_count, broadcast),
+ 	TP_STRUCT__entry(
+@@ -50,6 +50,7 @@ TRACE_EVENT(tlb_invalidation,
+ 		__field(unsigned long, range_size)
+ 		__field(int, target_cpu_count)
+ 		__field(bool, broadcast)
++		__field(int, node)
+ 	),
+ 	TP_fast_assign(
+ 		__entry->pid = pid;
+@@ -60,6 +61,7 @@ TRACE_EVENT(tlb_invalidation,
+ 		__entry->range_size = range_size;
+ 		__entry->target_cpu_count = target_cpu_count;
+ 		__entry->broadcast = broadcast;
++		__entry->node = node;
+ 	),
+ 	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu target_cpu_count=%d broadcast=%d node=%d",
+ 		  __entry->pid, __entry->tgid, __get_str(comm),
+diff --git a/mm/mmu_notifier.c b/mm/mmu_notifier.c
+index 666666666666..777777777777 100644
+--- a/mm/mmu_notifier.c
++++ b/mm/mmu_notifier.c
+@@ -527,7 +527,7 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
+ 
+ 	/* tlb-invalidation-lab: research patch sketch, not upstream-ready. */
+ 	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
+-		task_tgid_nr(current), current->comm, range->start, range->end, size, 0);
++		task_tgid_nr(current), current->comm, range->start, range->end, size, 0, numa_node_id());
+ 	id = srcu_read_lock(&srcu);
+ 	hlist_for_each_entry_rcu(subscription, &subscriptions->list, hlist,
+ 				 srcu_read_lock_held(&srcu))
+@@ -559,7 +559,7 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
+ 				 srcu_read_lock_held(&srcu))
+ 		__mmu_notifier_invalidate_range_end(range);
+ 	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
+-		task_tgid_nr(current), current->comm, range->start, range->end, size, 1);
++		task_tgid_nr(current), current->comm, range->start, range->end, size, 1, numa_node_id());
+ 	srcu_read_unlock(&srcu, range->id);
+ 	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
+ }
+-- 
+2.43.0
