@@ -7,10 +7,13 @@ Expose whether the running system advertises hardware capability related
 to broadcast invalidation support. This patch does not implement INVLPGB
 or any other new invalidation behavior. It only exposes capability bits
 through sysfs for observability.
+
+This is a research patch for lab use. It is intentionally not presented
+as upstream-ready code.
 ---
  arch/x86/mm/Makefile       |  1 +
- arch/x86/mm/tlb_features.c | 69 +++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 70 insertions(+)
+ arch/x86/mm/tlb_features.c | 72 +++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 73 insertions(+)
  create mode 100644 arch/x86/mm/tlb_features.c
 
 diff --git a/arch/x86/mm/Makefile b/arch/x86/mm/Makefile
@@ -27,12 +30,11 @@ new file mode 100644
 index 000000000000..dddddddddddd
 --- /dev/null
 +++ b/arch/x86/mm/tlb_features.c
-@@ -0,0 +1,69 @@
+@@ -0,0 +1,72 @@
 +// SPDX-License-Identifier: GPL-2.0
++#include <linux/errno.h>
 +#include <linux/init.h>
-+#include <linux/kernel.h>
 +#include <linux/kobject.h>
-+#include <linux/mm.h>
 +#include <linux/sysfs.h>
 +#include <asm/cpufeature.h>
 +
@@ -78,6 +80,11 @@ index 000000000000..dddddddddddd
 +{
 +	int ret;
 +
++	/*
++	 * tlb-invalidation-lab: research patch sketch, not upstream-ready.
++	 * Expose a capability hint only; do not imply that any given kernel
++	 * invalidation path used a broadcast instruction.
++	 */
 +	tlb_features_kobj = kobject_create_and_add("tlb_features", mm_kobj);
 +	if (!tlb_features_kobj)
 +		return -ENOMEM;

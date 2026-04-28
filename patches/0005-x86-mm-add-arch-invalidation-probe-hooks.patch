@@ -7,47 +7,102 @@ This is a lab-oriented sketch showing where x86 invalidation paths could
 surface more architecture-specific observability fields. It is not
 presented as upstream-ready code.
 ---
- arch/x86/mm/tlb.c          | 16 ++++++++++++++++
- include/trace/events/tlb.h | 31 +++++++++++++++++++++++++++++++
- 2 files changed, 47 insertions(+)
+ arch/x86/mm/tlb.c          | 34 ++++++++++++++++++++++++++++++++++
+ include/trace/events/tlb.h | 40 ++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 74 insertions(+)
 
 diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
 index 222222222222..555555555555 100644
 --- a/arch/x86/mm/tlb.c
 +++ b/arch/x86/mm/tlb.c
-@@ -1038,6 +1038,22 @@ static __always_inline void trace_tlb_invalidation_event(unsigned long start,
- 	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
- 			       current->comm, start, end, range_size,
- 			       cpu_count, broadcast);
-+	trace_tlb_arch_invalidation(task_pid_nr(current), task_tgid_nr(current),
-+				    current->comm, start, end,
-+				    range_size >> PAGE_SHIFT,
-+				    cpu_count > 1,
+@@ -1032,6 +1032,40 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+ {
+ 	unsigned long range_size = 0;
+ 	int target_cpu_count = 0;
++	unsigned long range_pages = 0;
++	u8 instruction_family = TLB_INSTR_UNKNOWN;
++	bool remote = false;
+ 	bool broadcast = false;
+ 
+ 	if (info->end != TLB_FLUSH_ALL && info->end > info->start)
+@@ -1039,12 +1073,32 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+ 
+ 	if (mask)
+ 		target_cpu_count = cpumask_weight(mask);
++	remote = target_cpu_count > 1;
++	range_pages = range_size >> PAGE_SHIFT;
+ 
+ 	if (target_cpu_count > 1) {
+ #ifdef X86_FEATURE_INVLPGB
+ 		broadcast = boot_cpu_has(X86_FEATURE_INVLPGB);
+ #endif
+ 	}
++
++	/*
++	 * tlb-invalidation-lab: research patch sketch, not upstream-ready.
++	 * This is a best-effort architectural classification, not a precise
++	 * proof of which microarchitectural path completed the invalidation.
++	 */
 +#ifdef X86_FEATURE_INVLPGB
-+				    broadcast ? "invlpgb" :
++	if (broadcast) {
++		instruction_family = TLB_INSTR_INVLPGB;
++	} else
 +#endif
 +#ifdef X86_FEATURE_INVPCID
-+				    boot_cpu_has(X86_FEATURE_INVPCID) &&
-+				    range_size > PAGE_SIZE ? "invpcid" :
++	if (boot_cpu_has(X86_FEATURE_INVPCID) &&
++	    info->end == TLB_FLUSH_ALL) {
++		instruction_family = TLB_INSTR_INVPCID;
++	} else
 +#endif
-+				    range_size <= PAGE_SIZE ? "invlpg" :
-+				    "unknown");
++	if (range_pages == 1) {
++		instruction_family = TLB_INSTR_INVLPG;
++	}
+ 
+ 	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
+ 			       current->comm, info->start, info->end,
+@@ -1052,6 +1106,10 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+ 			       target_cpu_count, broadcast);
++	trace_tlb_arch_invalidation(task_pid_nr(current), task_tgid_nr(current),
++				    current->comm, info->start, info->end,
++				    range_pages, remote, instruction_family);
  }
 diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
-index 333333333333..666666666666 100644
+index 444444444444..666666666666 100644
 --- a/include/trace/events/tlb.h
 +++ b/include/trace/events/tlb.h
-@@ -42,6 +42,37 @@ TRACE_EVENT(tlb_invalidation,
+@@ -10,6 +10,17 @@
+ #undef EMe
+ #define EM(a,b)		TRACE_DEFINE_ENUM(a);
+ #define EMe(a,b)	TRACE_DEFINE_ENUM(a);
++
++#define TLB_INSTR_FAMILY				\
++	EM(  TLB_INSTR_UNKNOWN, "unknown" )		\
++	EM(  TLB_INSTR_INVLPG,  "invlpg" )		\
++	EM(  TLB_INSTR_INVPCID, "invpcid" )		\
++	EMe( TLB_INSTR_INVLPGB, "invlpgb" )
+ 
+ TLB_FLUSH_REASON
++TLB_INSTR_FAMILY
+ 
+ /*
+ * Now redefine the EM() and EMe() macros to map the enums to the strings
+@@ -17,6 +28,8 @@ TLB_FLUSH_REASON
+ #undef EMe
+ #define EM(a,b)		{ a, b },
+ #define EMe(a,b)	{ a, b }
+ 
+ TRACE_EVENT(tlb_flush,
+@@ -66,6 +79,33 @@ TRACE_EVENT(tlb_invalidation,
  		  __entry->target_cpu_count, __entry->broadcast)
  );
  
 +TRACE_EVENT(tlb_arch_invalidation,
 +	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
 +		 unsigned long start, unsigned long end,
-+		 unsigned long range_pages, bool local_or_remote,
-+		 const char *instruction_family),
++		 unsigned long range_pages, bool remote,
++		 u8 instruction_family),
 +	TP_ARGS(pid, tgid, comm, start, end, range_pages,
-+		local_or_remote, instruction_family),
++		remote, instruction_family),
 +	TP_STRUCT__entry(
 +		__field(pid_t, pid)
 +		__field(pid_t, tgid)
@@ -55,8 +110,8 @@ index 333333333333..666666666666 100644
 +		__field(unsigned long, start)
 +		__field(unsigned long, end)
 +		__field(unsigned long, range_pages)
-+		__field(bool, local_or_remote)
-+		__string(instruction_family, instruction_family)
++		__field(bool, remote)
++		__field(u8, instruction_family)
 +	),
 +	TP_fast_assign(
 +		__entry->pid = pid;
@@ -65,14 +120,13 @@ index 333333333333..666666666666 100644
 +		__entry->start = start;
 +		__entry->end = end;
 +		__entry->range_pages = range_pages;
-+		__entry->local_or_remote = local_or_remote;
-+		__assign_str(instruction_family, instruction_family);
++		__entry->remote = remote;
++		__entry->instruction_family = instruction_family;
 +	),
-+	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx range_pages=%lu local_or_remote=%s instruction_family=%s",
++	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx range_pages=%lu remote=%d instruction_family=%s",
 +		  __entry->pid, __entry->tgid, __get_str(comm),
 +		  __entry->start, __entry->end, __entry->range_pages,
-+		  __entry->local_or_remote ? "remote" : "local",
-+		  __get_str(instruction_family))
++		  __entry->remote, __print_symbolic(__entry->instruction_family, TLB_INSTR_FAMILY))
 +);
 -- 
 2.43.0

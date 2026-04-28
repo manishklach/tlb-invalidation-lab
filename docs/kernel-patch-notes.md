@@ -75,6 +75,34 @@ Important:
 - it does not claim that any given flush path used broadcast invalidation
 - it only exposes whether the running CPU advertises the relevant feature bit
 
+### 0005: x86 architecture-context invalidation sketch
+
+Extends the x86 tracepoint sketch with architecture-flavored fields such as:
+
+- range size in pages
+- local-versus-remote invalidation scope
+- a best-effort instruction-family classification
+
+Notes:
+
+- the instruction-family field is heuristic, not a hardware proof
+- the sketch is intended to show where such attribution could live in `arch/x86/mm/tlb.c`
+- this is explicitly research material, not an upstream-ready ABI
+
+### 0006: arm64 TLBI observability sketch
+
+Shows a plausible arm64 hook point around `__flush_tlb_range()` in `arch/arm64/include/asm/tlbflush.h`, with trace fields for:
+
+- TLBI scope
+- range size in pages
+- barrier-phase markers
+
+Notes:
+
+- the arm64 low-level invalidation paths live primarily in headers and inline helpers, which is why this sketch touches `tlbflush.h`
+- the patch is framed as a sketch because tracepoint plumbing through low-level arm64 code needs careful per-tree review
+- barrier markers are intended for attribution, not for making timing claims on their own
+
 ## Overhead considerations
 
 The patches are written with these constraints in mind:
@@ -90,6 +118,7 @@ For real debugging work:
 
 1. start with `0001`, `0002`, and `0004`
 2. treat `0003` as a design note unless you explicitly want to prototype procfs exposure
-3. collect traces during narrow intervals
-4. aggregate in userspace
-5. correlate against latency, scheduler, and workload metrics before drawing conclusions
+3. treat `0005` and `0006` as architecture-context sketches, not default patches to apply
+4. collect traces during narrow intervals
+5. aggregate in userspace
+6. correlate against latency, scheduler, and workload metrics before drawing conclusions

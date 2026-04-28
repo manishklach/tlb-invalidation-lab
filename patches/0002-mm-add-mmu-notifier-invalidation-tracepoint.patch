@@ -6,10 +6,13 @@ Subject: [PATCH 2/4] mm: add mmu notifier invalidation tracepoint
 Add tracepoints around MMU notifier invalidation start/end so notifier
 activity can be correlated with TLB invalidation bursts and AI runtime
 subsystems such as UVM- or RDMA-adjacent invalidation paths.
+
+This is a research patch for lab use. It is intentionally not presented
+as upstream-ready code.
 ---
  include/trace/events/mmu.h | 49 +++++++++++++++++++++++++++++++++++++++++++++
- mm/mmu_notifier.c          | 10 +++++++++
- 2 files changed, 59 insertions(+)
+ mm/mmu_notifier.c          | 11 +++++++++++
+ 2 files changed, 60 insertions(+)
  create mode 100644 include/trace/events/mmu.h
 
 diff --git a/include/trace/events/mmu.h b/include/trace/events/mmu.h
@@ -63,17 +66,17 @@ diff --git a/mm/mmu_notifier.c b/mm/mmu_notifier.c
 index 555555555555..666666666666 100644
 --- a/mm/mmu_notifier.c
 +++ b/mm/mmu_notifier.c
-@@ -4,6 +4,9 @@
+@@ -8,6 +8,9 @@
  #include <linux/srcu.h>
- #include <linux/mmu_notifier.h>
- #include <linux/interval_tree.h>
+ #include <linux/rcupdate.h>
+ #include <linux/sched.h>
 +#define CREATE_TRACE_POINTS
 +#include <trace/events/mmu.h>
 +
+ #include <linux/sched/mm.h>
+ #include <linux/slab.h>
  
- static DEFINE_SPINLOCK(mmu_notifier_lock);
- 
-@@ -420,6 +423,9 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
+@@ -512,6 +515,9 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
  {
  	struct mmu_notifier_subscriptions *subscriptions =
  		range->mm->notifier_subscriptions;
@@ -83,16 +86,17 @@ index 555555555555..666666666666 100644
  	int id;
  
  	if (!subscriptions)
-@@ -427,6 +433,8 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
+@@ -519,6 +525,9 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
  
  	lock_map_acquire(&__mmu_notifier_invalidate_range_start_map);
  
++	/* tlb-invalidation-lab: research patch sketch, not upstream-ready. */
 +	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
 +		task_tgid_nr(current), current->comm, range->start, range->end, size, 0);
- 	id = srcu_read_lock(&subscriptions->srcu);
- 	hlist_for_each_entry_rcu(range->subscription, &subscriptions->list, hlist,
- 				 srcu_read_lock_held(&subscriptions->srcu))
-@@ -443,6 +451,8 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
+ 	id = srcu_read_lock(&srcu);
+ 	hlist_for_each_entry_rcu(subscription, &subscriptions->list, hlist,
+ 				 srcu_read_lock_held(&srcu))
+@@ -540,6 +549,8 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
  {
  	struct mmu_notifier_subscriptions *subscriptions =
  		range->mm->notifier_subscriptions;
@@ -101,13 +105,13 @@ index 555555555555..666666666666 100644
  
  	if (!subscriptions)
  		return;
-@@ -450,6 +460,8 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
- 	hlist_for_each_entry_rcu(range->subscription, &subscriptions->list, hlist,
- 				 srcu_read_lock_held(&subscriptions->srcu))
+@@ -547,6 +558,8 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
+ 	hlist_for_each_entry_rcu(subscription, &subscriptions->list, hlist,
+ 				 srcu_read_lock_held(&srcu))
  		__mmu_notifier_invalidate_range_end(range);
 +	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
 +		task_tgid_nr(current), current->comm, range->start, range->end, size, 1);
- 	srcu_read_unlock(&subscriptions->srcu, range->id);
+ 	srcu_read_unlock(&srcu, range->id);
  	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
  }
 -- 

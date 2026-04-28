@@ -7,54 +7,104 @@ This is a lab-oriented sketch showing where arm64 TLBI paths could emit
 scope and barrier-related observability fields. It is intentionally not
 presented as upstream-ready code.
 ---
- arch/arm64/mm/tlb.c        | 20 ++++++++++++++++++++
- include/trace/events/tlb.h | 31 +++++++++++++++++++++++++++++++
- 2 files changed, 51 insertions(+)
+ arch/arm64/include/asm/tlbflush.h | 31 +++++++++++++++++++++++++++++++
+ arch/arm64/mm/flush.c             |  3 +++
+ include/trace/events/tlb.h        | 35 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 69 insertions(+)
 
-diff --git a/arch/arm64/mm/tlb.c b/arch/arm64/mm/tlb.c
+diff --git a/arch/arm64/include/asm/tlbflush.h b/arch/arm64/include/asm/tlbflush.h
 index 777777777777..888888888888 100644
---- a/arch/arm64/mm/tlb.c
-+++ b/arch/arm64/mm/tlb.c
-@@ -8,6 +8,7 @@
- #include <linux/mm.h>
- #include <linux/smp.h>
- #include <linux/cpumask.h>
+--- a/arch/arm64/include/asm/tlbflush.h
++++ b/arch/arm64/include/asm/tlbflush.h
+@@ -12,6 +12,7 @@
+ #include <linux/mm_types.h>
+ #include <linux/sched.h>
+ #include <linux/mmu_notifier.h>
 +#include <trace/events/tlb.h>
+ #include <asm/cputype.h>
+ #include <asm/mmu.h>
  
-@@ -220,6 +221,25 @@ static void __flush_tlb_range(struct vm_area_struct *vma,
+@@ -344,6 +345,15 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
+ 	if ((!system_supports_tlb_range() &&
+ 	     (end - start) >= (MAX_TLBI_OPS * stride)) ||
+ 	    pages >= MAX_TLBI_RANGE_PAGES) {
++		/*
++		 * tlb-invalidation-lab: research patch sketch, not
++		 * upstream-ready. Full-mm fallback is reported as a
++		 * system-scope invalidation with a pre-TLBI marker only.
++		 */
++		trace_tlb_arm64_invalidation(task_pid_nr(current),
++					     task_tgid_nr(current), current->comm,
++					     start, end, pages,
++					     TLB_ARM64_SCOPE_SYSTEM,
++					     TLB_ARM64_BARRIER_PRE_TLBI);
+ 		flush_tlb_mm(vma->vm_mm);
+ 		return;
+ 	}
+@@ -351,12 +361,24 @@ static inline void __flush_tlb_range(struct vm_area_struct *vma,
  	dsb(ishst);
+ 	asid = ASID(vma->vm_mm);
+ 
 +	trace_tlb_arm64_invalidation(task_pid_nr(current), task_tgid_nr(current),
-+				     current->comm, start, end,
-+				     (end - start) >> PAGE_SHIFT,
-+				     last_level ? "local" : "inner-shareable",
-+				     "pre-tlbi");
- 	__tlbi(vale1is, addr);
++				     current->comm, start, end, pages,
++				     last_level ? TLB_ARM64_SCOPE_LOCAL :
++				     TLB_ARM64_SCOPE_INNER_SHAREABLE,
++				     TLB_ARM64_BARRIER_PRE_TLBI);
+ 	if (last_level)
+ 		__flush_tlb_range_op(vale1is, start, pages, stride, asid, tlb_level, true);
+ 	else
+ 		__flush_tlb_range_op(vae1is, start, pages, stride, asid, tlb_level, true);
+ 
 +	trace_tlb_arm64_invalidation(task_pid_nr(current), task_tgid_nr(current),
-+				     current->comm, start, end,
-+				     (end - start) >> PAGE_SHIFT,
-+				     last_level ? "local" : "inner-shareable",
-+				     "post-tlbi");
++				     current->comm, start, end, pages,
++				     last_level ? TLB_ARM64_SCOPE_LOCAL :
++				     TLB_ARM64_SCOPE_INNER_SHAREABLE,
++				     TLB_ARM64_BARRIER_POST_TLBI);
  	dsb(ish);
 +	trace_tlb_arm64_invalidation(task_pid_nr(current), task_tgid_nr(current),
-+				     current->comm, start, end,
-+				     (end - start) >> PAGE_SHIFT,
-+				     last_level ? "local" : "inner-shareable",
-+				     "post-dsb-ish");
- 	isb();
++				     current->comm, start, end, pages,
++				     TLB_ARM64_SCOPE_INNER_SHAREABLE,
++				     TLB_ARM64_BARRIER_POST_DSB_ISH);
+ 	mmu_notifier_arch_invalidate_secondary_tlbs(vma->vm_mm, start, end);
  }
+diff --git a/arch/arm64/mm/flush.c b/arch/arm64/mm/flush.c
+index 999999999999..aaaaaaaaaaaa 100644
+--- a/arch/arm64/mm/flush.c
++++ b/arch/arm64/mm/flush.c
+@@ -1,4 +1,7 @@
+ // SPDX-License-Identifier: GPL-2.0-only
++#define CREATE_TRACE_POINTS
++#include <trace/events/tlb.h>
++
+ /*
+  * Copyright (C) 2002 ARM Ltd.
+  */
 diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
 index 666666666666..999999999999 100644
 --- a/include/trace/events/tlb.h
 +++ b/include/trace/events/tlb.h
-@@ -73,3 +73,34 @@ TRACE_EVENT(tlb_arch_invalidation,
- 		  __entry->local_or_remote ? "remote" : "local",
- 		  __get_str(instruction_family))
+@@ -22,6 +22,13 @@ TLB_INSTR_FAMILY
++#define TLB_ARM64_SCOPE					\
++	EM(  TLB_ARM64_SCOPE_LOCAL, "local" )		\
++	EM(  TLB_ARM64_SCOPE_INNER_SHAREABLE, "inner-shareable" ) \
++	EMe( TLB_ARM64_SCOPE_SYSTEM, "system" )
++
++#define TLB_ARM64_BARRIER_PHASE				\
++	EM(  TLB_ARM64_BARRIER_PRE_TLBI, "pre-tlbi" )	\
++	EM(  TLB_ARM64_BARRIER_POST_TLBI, "post-tlbi" ) \
++	EMe( TLB_ARM64_BARRIER_POST_DSB_ISH, "post-dsb-ish" )
++
++TLB_ARM64_SCOPE
++TLB_ARM64_BARRIER_PHASE
+@@ -106,6 +113,32 @@ TRACE_EVENT(tlb_arch_invalidation,
+ 		  __entry->remote, __print_symbolic(__entry->instruction_family, TLB_INSTR_FAMILY))
  );
+ 
 +TRACE_EVENT(tlb_arm64_invalidation,
 +	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
 +		 unsigned long start, unsigned long end,
-+		 unsigned long range_pages, const char *tlbi_scope,
-+		 const char *barrier_phase),
++		 unsigned long range_pages, u8 tlbi_scope,
++		 u8 barrier_phase),
 +	TP_ARGS(pid, tgid, comm, start, end, range_pages,
 +		tlbi_scope, barrier_phase),
 +	TP_STRUCT__entry(
@@ -64,8 +114,8 @@ index 666666666666..999999999999 100644
 +		__field(unsigned long, start)
 +		__field(unsigned long, end)
 +		__field(unsigned long, range_pages)
-+		__string(tlbi_scope, tlbi_scope)
-+		__string(barrier_phase, barrier_phase)
++		__field(u8, tlbi_scope)
++		__field(u8, barrier_phase)
 +	),
 +	TP_fast_assign(
 +		__entry->pid = pid;
@@ -74,13 +124,14 @@ index 666666666666..999999999999 100644
 +		__entry->start = start;
 +		__entry->end = end;
 +		__entry->range_pages = range_pages;
-+		__assign_str(tlbi_scope, tlbi_scope);
-+		__assign_str(barrier_phase, barrier_phase);
++		__entry->tlbi_scope = tlbi_scope;
++		__entry->barrier_phase = barrier_phase;
 +	),
 +	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx range_pages=%lu tlbi_scope=%s barrier_phase=%s",
 +		  __entry->pid, __entry->tgid, __get_str(comm),
 +		  __entry->start, __entry->end, __entry->range_pages,
-+		  __get_str(tlbi_scope), __get_str(barrier_phase))
++		  __print_symbolic(__entry->tlbi_scope, TLB_ARM64_SCOPE),
++		  __print_symbolic(__entry->barrier_phase, TLB_ARM64_BARRIER_PHASE))
 +);
 -- 
 2.43.0

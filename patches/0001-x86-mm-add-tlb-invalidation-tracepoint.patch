@@ -7,91 +7,85 @@ Add an x86-focused tracepoint for invalidation ranges so that users can
 measure invalidation frequency, bytes invalidated, and rough fanout
 without adding expensive formatting to the hot path.
 
-The event is intended for observability and attribution. It does not
-change invalidation behavior.
+This is a research patch for observability work. It is intentionally not
+presented as upstream-ready code.
 ---
- arch/x86/mm/tlb.c            | 28 ++++++++++++++++++++++++++++
- include/trace/events/tlb.h   | 47 +++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 75 insertions(+)
- create mode 100644 include/trace/events/tlb.h
+ arch/x86/mm/tlb.c          | 33 ++++++++++++++++++++++++++++++++-
+ include/trace/events/tlb.h | 32 ++++++++++++++++++++++++++++++++
+ 2 files changed, 64 insertions(+), 1 deletion(-)
 
 diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
 index 111111111111..222222222222 100644
 --- a/arch/x86/mm/tlb.c
 +++ b/arch/x86/mm/tlb.c
-@@ -10,6 +10,10 @@
- #include <linux/mm.h>
- #include <linux/smp.h>
- #include <linux/cpumask.h>
+@@ -8,8 +8,12 @@
+ #include <linux/interrupt.h>
+ #include <linux/export.h>
+ #include <linux/cpu.h>
++#include <linux/cpumask.h>
+ #include <linux/debugfs.h>
+ #include <linux/sched/smt.h>
 +#define CREATE_TRACE_POINTS
 +#include <trace/events/tlb.h>
 +
- #include <asm/tlbflush.h>
-+#include <asm/cpufeature.h>
- #include <asm/paravirt.h>
+ #include <linux/task_work.h>
+ #include <linux/mmu_notifier.h>
  
-@@ -1012,6 +1016,31 @@ static void flush_tlb_func(void *info)
- 	flush_tlb_local();
+@@ -1028,6 +1032,34 @@ static bool tlb_is_not_lazy(int cpu, void *data)
+ 	return !per_cpu(cpu_tlbstate_shared.is_lazy, cpu);
  }
  
-+static __always_inline void trace_tlb_invalidation_event(unsigned long start,
-+							 unsigned long end,
-+							 const struct cpumask *mask)
++static __always_inline void
++trace_tlb_invalidation_event(const struct flush_tlb_info *info,
++			     const struct cpumask *mask)
 +{
-+	unsigned long range_size;
-+	int cpu_count = 0;
++	unsigned long range_size = 0;
++	int target_cpu_count = 0;
 +	bool broadcast = false;
 +
-+	if (end <= start)
-+		range_size = 0;
-+	else
-+		range_size = end - start;
++	/*
++	 * tlb-invalidation-lab: research patch sketch, not upstream-ready.
++	 * Keep the event cheap and avoid claiming more precision than the
++	 * invalidation path can provide here.
++	 */
++	if (info->end != TLB_FLUSH_ALL && info->end > info->start)
++		range_size = info->end - info->start;
 +
 +	if (mask)
-+		cpu_count = cpumask_weight(mask);
++		target_cpu_count = cpumask_weight(mask);
 +
-+	/*
-+	 * Heuristic hint only: report capability-backed likelihood for
-+	 * multi-CPU invalidations without claiming the exact hardware path.
-+	 */
-+	if (cpu_count > 1) {
++	if (target_cpu_count > 1) {
 +#ifdef X86_FEATURE_INVLPGB
 +		broadcast = boot_cpu_has(X86_FEATURE_INVLPGB);
 +#endif
 +	}
 +
 +	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
-+			       current->comm, start, end, range_size,
-+			       cpu_count, broadcast);
++			       current->comm, info->start, info->end,
++			       range_size, target_cpu_count, broadcast);
 +}
 +
- static void native_flush_tlb_multi(const struct cpumask *cpumask,
- 				   const struct flush_tlb_info *info)
- {
-@@ -1032,6 +1061,8 @@ static void native_flush_tlb_multi(const struct cpumask *cpumask,
- 	if (cpumask_empty(cpumask))
- 		return;
+ DEFINE_PER_CPU_SHARED_ALIGNED(struct tlb_state_shared, cpu_tlbstate_shared);
+ EXPORT_PER_CPU_SYMBOL(cpu_tlbstate_shared);
  
-+	trace_tlb_invalidation_event(info->start, info->end, cpumask);
-+
- 	on_each_cpu_mask(cpumask, flush_tlb_func, (void *)info, 1);
- }
+@@ -1044,7 +1076,8 @@ STATIC_NOPV void native_flush_tlb_multi(const struct cpumask *cpumask,
+ 		trace_tlb_flush(TLB_REMOTE_SEND_IPI,
+ 				(info->end - info->start) >> PAGE_SHIFT);
  
+-	/*
++	trace_tlb_invalidation_event(info, cpumask);
++	/*
+ 	 * If no page tables were freed, we can skip sending IPIs to
+ 	 * CPUs in lazy TLB mode. They will flush the CPU themselves
+ 	 * at the next context switch.
 diff --git a/include/trace/events/tlb.h b/include/trace/events/tlb.h
-new file mode 100644
-index 000000000000..333333333333
---- /dev/null
+index 333333333333..444444444444 100644
+--- a/include/trace/events/tlb.h
 +++ b/include/trace/events/tlb.h
-@@ -0,0 +1,47 @@
-+/* SPDX-License-Identifier: GPL-2.0 */
-+#undef TRACE_SYSTEM
-+#define TRACE_SYSTEM tlb
-+
-+#if !defined(_TRACE_TLB_H) || defined(TRACE_HEADER_MULTI_READ)
-+#define _TRACE_TLB_H
-+
-+#include <linux/tracepoint.h>
-+
+@@ -34,6 +34,38 @@ TRACE_EVENT(tlb_flush,
+ 		__entry->reason)
+ );
+ 
 +TRACE_EVENT(tlb_invalidation,
 +	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
 +		 unsigned long start, unsigned long end,
@@ -125,8 +119,8 @@ index 000000000000..333333333333
 +		  __entry->target_cpu_count, __entry->broadcast)
 +);
 +
-+#endif /* _TRACE_TLB_H */
-+
-+#include <trace/define_trace.h>
+ #endif /* _TRACE_TLB_H */
+ 
+ /* This part must be outside protection */
 -- 
 2.43.0

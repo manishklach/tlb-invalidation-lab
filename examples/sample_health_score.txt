@@ -4,3 +4,4 @@ bytes_invalidated_per_sec=4915.20
 avg_fanout=8.00
 health_score=6.25
 health_class=green
+note=derived from examples/sample_trace.csv over a 10 second synthetic window

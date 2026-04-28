@@ -13,6 +13,10 @@ static int __init lab_tlb_probe_init(void)
 {
 	char *ptr;
 
+	/*
+	 * Single educational execution only: one page allocation, one write,
+	 * one INVLPG, then stop. This is intentionally not a stress path.
+	 */
 	lab_probe_page = __get_free_page(GFP_KERNEL);
 	if (!lab_probe_page)
 		return -ENOMEM;

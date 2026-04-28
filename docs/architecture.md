@@ -25,9 +25,9 @@ Common invalidation-producing events include:
 
 These changes typically produce range-oriented invalidation behavior rather than isolated single-page events.
 
-## TLB shootdowns
+## Cross-CPU TLB invalidation
 
-On SMP systems, one CPU changing a page-table entry may need to invalidate translations cached by other CPUs. That produces a shootdown pattern:
+On SMP systems, one CPU changing a page-table entry may need to invalidate translations cached by other CPUs. That produces a cross-CPU invalidation pattern:
 
 - local CPU performs the page-table update
 - remote CPUs receive an invalidation request

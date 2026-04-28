@@ -4,7 +4,7 @@ Making TLB invalidation observable, attributable, and measurable in modern AI wo
 
 `tlb-invalidation-lab` is an observability and attribution lab for a part of Linux performance that is often felt before it is seen: translation invalidation activity.
 
-AI inference stacks are often described as GPU-bound. That description is directionally true, but incomplete. Modern inference nodes also depend on CPU-side memory-management paths for pinned memory, GPU UVM interactions, RDMA buffers, allocator churn, memory-mapped state, and process lifecycle noise. When those paths trigger TLB invalidations, remote shootdowns and page-table synchronization can interrupt CPU progress, perturb scheduling, and widen tail latency.
+AI inference stacks are often described as GPU-bound. That description is directionally true, but incomplete. Modern inference nodes also depend on CPU-side memory-management paths for pinned memory, GPU UVM interactions, RDMA buffers, allocator churn, memory-mapped state, and process lifecycle noise. When those paths trigger TLB invalidations, remote invalidation work and page-table synchronization can interrupt CPU progress, perturb scheduling, and widen tail latency.
 
 This repository does not claim a magic fix. It does not rewrite the kernel, replace the MM subsystem, or promise direct GPU acceleration.
 
@@ -245,6 +245,28 @@ For a small example, see:
 - [examples/sample_trace.csv](examples/sample_trace.csv)
 - [examples/sample_trace_summary.txt](examples/sample_trace_summary.txt)
 - [examples/sample_health_score.txt](examples/sample_health_score.txt)
+
+## Example Output
+
+The files under `examples/` are synthetic documentation artifacts, not production captures.
+
+`examples/sample_trace_summary.txt` summarizes a tiny capture with:
+
+- one `tlb_invalidation` event
+- two MMU notifier events
+- 49,152 bytes invalidated
+- average target CPU count of `8.00`
+
+`examples/sample_health_score.txt` shows the corresponding health-score output for a 10 second observation window:
+
+- `invalidations_per_sec=0.10`
+- `bytes_invalidated_per_sec=4915.20`
+- `avg_fanout=8.00`
+- `health_class=green`
+
+These examples are intentionally modest. They are meant to show the data shape and analysis flow, not to imply a dramatic performance issue.
+
+For a longer synthetic walk-through, see `docs/results.md`.
 
 ## What to look for
 

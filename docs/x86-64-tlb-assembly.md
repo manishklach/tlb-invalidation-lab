@@ -13,7 +13,7 @@ It is not a recommendation to issue raw invalidation instructions from arbitrary
 Operationally:
 
 - it is privileged
-- it is local unless combined with wider kernel shootdown machinery
+- it is local unless combined with wider kernel invalidation machinery
 - it is often the easiest instruction to discuss in educational probes
 
 For this repository, `arch-probes/x86_64/invlpg_probe.h` exposes a tiny wrapper only to make the instruction concrete in a lab module.

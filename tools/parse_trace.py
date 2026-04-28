@@ -43,6 +43,19 @@ def update_bucket(buckets, key, event_type, data):
 
 def main():
     args = parse_args()
+    fieldnames = [
+        "pid",
+        "tgid",
+        "comm",
+        "event_count",
+        "tlb_invalidations",
+        "mmu_events",
+        "mmu_start_count",
+        "mmu_end_count",
+        "bytes_invalidated",
+        "avg_fanout",
+        "broadcast_count",
+    ]
     buckets = defaultdict(lambda: {
         "pid": 0,
         "tgid": 0,
@@ -57,31 +70,35 @@ def main():
     })
 
     matched = 0
+    input_error = None
 
-    with open(args.trace, "r", encoding="utf-8", errors="replace") as f:
-        for line in f:
-            m = TLB_RE.search(line)
-            if m:
-                data = m.groupdict()
-                key = (int(data["tgid"]), data["comm"])
-                bucket = buckets[key]
-                bucket["pid"] = int(data["pid"])
-                bucket["tgid"] = int(data["tgid"])
-                bucket["comm"] = data["comm"]
-                update_bucket(buckets, key, "tlb", data)
-                matched += 1
-                continue
+    try:
+        with open(args.trace, "r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                m = TLB_RE.search(line)
+                if m:
+                    data = m.groupdict()
+                    key = (int(data["tgid"]), data["comm"])
+                    bucket = buckets[key]
+                    bucket["pid"] = int(data["pid"])
+                    bucket["tgid"] = int(data["tgid"])
+                    bucket["comm"] = data["comm"]
+                    update_bucket(buckets, key, "tlb", data)
+                    matched += 1
+                    continue
 
-            m = MMU_RE.search(line)
-            if m:
-                data = m.groupdict()
-                key = (int(data["tgid"]), data["comm"])
-                bucket = buckets[key]
-                bucket["pid"] = int(data["pid"])
-                bucket["tgid"] = int(data["tgid"])
-                bucket["comm"] = data["comm"]
-                update_bucket(buckets, key, "mmu", data)
-                matched += 1
+                m = MMU_RE.search(line)
+                if m:
+                    data = m.groupdict()
+                    key = (int(data["tgid"]), data["comm"])
+                    bucket = buckets[key]
+                    bucket["pid"] = int(data["pid"])
+                    bucket["tgid"] = int(data["tgid"])
+                    bucket["comm"] = data["comm"]
+                    update_bucket(buckets, key, "mmu", data)
+                    matched += 1
+    except OSError as exc:
+        input_error = exc
 
     rows = []
     for _, bucket in sorted(buckets.items(), key=lambda item: item[1]["bytes_invalidated"], reverse=True):
@@ -103,20 +120,6 @@ def main():
             "broadcast_count": bucket["broadcast_count"],
         })
 
-    fieldnames = [
-        "pid",
-        "tgid",
-        "comm",
-        "event_count",
-        "tlb_invalidations",
-        "mmu_events",
-        "mmu_start_count",
-        "mmu_end_count",
-        "bytes_invalidated",
-        "avg_fanout",
-        "broadcast_count",
-    ]
-
     writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
     writer.writeheader()
     writer.writerows(rows)
@@ -127,7 +130,9 @@ def main():
             csv_writer.writeheader()
             csv_writer.writerows(rows)
 
-    if matched == 0:
+    if input_error is not None:
+        print(f"warning: unable to read trace input {args.trace}: {input_error}", file=sys.stderr)
+    elif matched == 0:
         print("warning: no matching tlb/mmu tracepoint events found", file=sys.stderr)
 
 

@@ -9,7 +9,7 @@ static int __init lab_tlb_probe_init(void)
 	pr_info("lab_tlb_probe_arm64: educational module loaded; default build does not execute TLBI\n");
 	pr_info("lab_tlb_probe_arm64: lab note sequence is dsb ishst -> tlbi ... -> dsb ish -> isb\n");
 #ifdef LAB_ENABLE_ARM64_TLBI_DEMO
-	pr_info("lab_tlb_probe_arm64: LAB_ENABLE_ARM64_TLBI_DEMO is enabled in this build\n");
+	pr_info("lab_tlb_probe_arm64: LAB_ENABLE_ARM64_TLBI_DEMO is enabled in this build; keep this to disposable lab kernels only\n");
 #endif
 	return 0;
 }

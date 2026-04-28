@@ -26,17 +26,24 @@ def main():
     total_invalidations = 0
     total_bytes = 0
     weighted_fanout = 0.0
+    input_error = None
 
-    with open(args.csv_file, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            inv = int(row["tlb_invalidations"])
-            total_invalidations += inv
-            total_bytes += int(row["bytes_invalidated"])
-            weighted_fanout += float(row["avg_fanout"]) * inv
+    try:
+        with open(args.csv_file, "r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                inv = int(row["tlb_invalidations"])
+                total_invalidations += inv
+                total_bytes += int(row["bytes_invalidated"])
+                weighted_fanout += float(row["avg_fanout"]) * inv
+    except OSError as exc:
+        input_error = exc
 
     if total_invalidations == 0 and total_bytes == 0:
-        print("warning=no_events_observed", file=sys.stderr)
+        if input_error is not None:
+            print(f"warning=input_unavailable:{input_error}", file=sys.stderr)
+        else:
+            print("warning=no_events_observed", file=sys.stderr)
 
     invalidations_per_sec = total_invalidations / args.window_seconds
     bytes_per_sec = total_bytes / args.window_seconds
