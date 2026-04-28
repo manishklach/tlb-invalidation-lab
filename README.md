@@ -29,7 +29,8 @@ Translation invalidation is often a "hidden tax" on AI infrastructure. This tool
 ## What this repository provides
 
 - research-grade kernel instrumentation sketches
-- tracepoints for x86 TLB invalidation and MMU notifier activity
+- NUMA-aware tracepoints for x86 TLB invalidation and MMU notifier activity
+- a non-invasive eBPF collector (`tools/tlb_ebpf_collector.py`) for unpatched kernels
 - an experimental procfs design sketch for `/proc/<pid>/tlb_stats`
 - a sysfs capability view for broadcast invalidation-related CPU support
 - educational x86-64 and arm64 architecture probe modules
@@ -316,8 +317,8 @@ For the aligned signal workflow specifically, see `docs/correlation-and-visualiz
 
 Planned areas for future exploration and hardening:
 
-* **eBPF Backport**: Develop an eBPF-based collector using `kprobes` on `native_flush_tlb_multi` for systems where kernel patching is not feasible.
-* **NUMA Awareness**: Incorporate NUMA node IDs into trace outputs to identify if invalidation storms are localized to specific memory controllers or cross-socket fabrics.
+* **Advanced NUMA Correlation**: Mapping invalidation bursts to specific socket-local memory controllers and PCIe root complexes.
+* **eBPF CO-RE Migration**: Porting the collector to BPF CO-RE (Compile Once, Run Everywhere) for broader kernel compatibility.
 * **Deeper Scheduler Correlation**: Better alignment between task migration events and invalidation bursts.
 * **GPU Runtime Integration**: Direct visibility into UVM (Unified Virtual Memory) eviction events.
 * **Adaptive Alerting**: Thresholds that adjust based on workload class (e.g., training vs. low-latency inference).
