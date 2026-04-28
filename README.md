@@ -80,8 +80,11 @@ On modern platforms, especially those pushing PCIe Gen5 margins, signal-integrit
 - a sysfs capability view for broadcast invalidation-related CPU support
 - educational x86-64 and arm64 architecture probe modules
 - trace collection and parsing tools
+- correlation, GPU, and scheduler sampling tools
 - a lightweight health scoring tool
 - a minimal Prometheus exporter
+- simple matplotlib-based visualization scripts
+- a one-command experiment runner
 - synthetic benchmarks that drive invalidation-heavy VM behavior
 - examples and CI for the userspace pieces
 
@@ -117,6 +120,8 @@ tlb-invalidation-lab/
 - CPU-normalized health scoring based on per-core invalidation rate
 - reduced arm64 trace-noise in the architecture sketch to avoid range-flooding
 - a minimal QEMU bootstrap for lab validation work
+- correlation tooling for latency, GPU, and scheduler signals
+- a one-command experiment workflow
 
 ## Patch set overview
 
@@ -200,8 +205,8 @@ If the custom tracepoints are not present in the running kernel, the collector e
 ### 5. Parse and aggregate the trace
 
 ```bash
-python3 tools/parse_trace.py out/tlb_trace.txt --csv out/tlb_trace.csv
-python3 tools/tlb_health_score.py out/tlb_trace.csv
+python3 tools/parse_trace.py out/tlb_trace.txt --csv out/tlb_timeseries.csv
+python3 tools/tlb_health_score.py out/tlb_timeseries.csv
 ```
 
 The parser emits a time-series CSV with:
@@ -215,7 +220,7 @@ If no matching events are present, the parser still emits a valid CSV header and
 ### 6. Export metrics
 
 ```bash
-python3 tools/prometheus_exporter.py --input out/tlb_trace.csv --listen 0.0.0.0 --port 9824 --max-process-labels 10
+python3 tools/prometheus_exporter.py --input out/tlb_timeseries.csv --listen 0.0.0.0 --port 9824 --max-process-labels 10
 ```
 
 The exporter is designed to expose an error metric rather than crash if the input file is missing or malformed. It also emits top-N per-process labeled series and rolls the rest into `pid="other",comm="other"`.
@@ -228,6 +233,41 @@ cd /path/to/tlb-invalidation-lab/vm
 ```
 
 See `vm/README.md` for bootstrap details and environment overrides.
+
+## Correlation workflow
+
+The repo can now align TLB invalidation activity with latency, GPU, and scheduler signals. That makes it possible to investigate timing relationships without claiming causation automatically.
+
+One command:
+
+```bash
+./run_experiment.sh
+```
+
+Individual tools:
+
+```bash
+python3 tools/sample_gpu.py --duration 20 --output out/gpu_timeseries.csv
+python3 tools/sample_sched.py --duration 20 --output out/sched_timeseries.csv
+python3 tools/correlate_latency.py --tlb out/tlb_timeseries.csv --gpu out/gpu_timeseries.csv --sched out/sched_timeseries.csv --output out/correlation.csv
+python3 tools/plot_correlation.py --input out/correlation.csv
+```
+
+If you have service latency data, add it with `--latency latency.csv`. The one-command runner does not synthesize a latency stream on its own.
+
+Interpretation guidance:
+
+- treat Pearson coefficients and plots as correlation, not proof of causation
+- repeated timing patterns are more useful than a single noisy bucket
+- scheduler pressure can confound apparent MMU effects
+- GPU underutilization during high invalidation windows is a lead for further testing, not a verdict
+
+## What this can reveal
+
+- invalidation bursts preceding or overlapping P99 spikes
+- GPU utilization dips during high invalidation windows
+- scheduler pressure moving with invalidation spikes, which may point to a confounder
+- per-process invalidation attribution showing which process names dominate noisy windows
 
 ## Architecture probe modules
 
@@ -269,6 +309,11 @@ For a small example, see:
 - [examples/sample_trace.csv](examples/sample_trace.csv)
 - [examples/sample_trace_summary.txt](examples/sample_trace_summary.txt)
 - [examples/sample_health_score.txt](examples/sample_health_score.txt)
+- [examples/tlb_timeseries.csv](examples/tlb_timeseries.csv)
+- [examples/latency_timeseries.csv](examples/latency_timeseries.csv)
+- [examples/gpu_timeseries.csv](examples/gpu_timeseries.csv)
+- [examples/sched_timeseries.csv](examples/sched_timeseries.csv)
+- [examples/correlation.csv](examples/correlation.csv)
 
 ## Example Output
 
@@ -292,6 +337,7 @@ The files under `examples/` are synthetic documentation artifacts, not productio
 These examples are intentionally modest. They are meant to show the data shape and analysis flow, not to imply a dramatic performance issue.
 
 For a longer synthetic walk-through, see `docs/results.md`.
+For the aligned signal workflow specifically, see `docs/correlation-and-visualization.md`.
 
 ## What to look for
 
@@ -309,6 +355,8 @@ For a longer synthetic walk-through, see `docs/results.md`.
 - broadcast invalidation detection is capability exposure, not behavioral proof
 - the procfs sketch is documentation for an idea, not a claimed production implementation
 - userland parsing assumes standard ftrace-style text output
+- correlation tooling can align signals in time, but it cannot prove causality without controlled experiments
+- GPU sampling depends on `nvidia-smi`; systems without NVIDIA GPUs will get an empty but valid GPU CSV
 
 ## Audience
 

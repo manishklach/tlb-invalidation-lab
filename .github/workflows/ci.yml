@@ -22,11 +22,18 @@ jobs:
           test -f docs/x86-64-tlb-assembly.md
           test -f docs/arm64-tlb-assembly.md
           test -f docs/boot-and-arch-notes.md
+          test -f docs/correlation-and-visualization.md
           test -f docs/results.md
           test -f examples/sample_trace.txt
           test -f examples/sample_trace.csv
           test -f examples/sample_trace_summary.txt
           test -f examples/sample_health_score.txt
+          test -f examples/tlb_timeseries.csv
+          test -f examples/latency_timeseries.csv
+          test -f examples/gpu_timeseries.csv
+          test -f examples/sched_timeseries.csv
+          test -f examples/correlation.csv
+          test -f examples/plots/README.md
           test -f patches/0001-x86-mm-add-tlb-invalidation-tracepoint.patch
           test -f patches/0002-mm-add-mmu-notifier-invalidation-tracepoint.patch
           test -f patches/0003-proc-add-per-process-tlb-stats-sketch.patch
@@ -47,9 +54,14 @@ jobs:
           test -f benchmarks/threaded_mmap_churn.c
           test -f benchmarks/run_bench.sh
           test -f tools/collect_trace.sh
+          test -f tools/correlate_latency.py
           test -f tools/parse_trace.py
+          test -f tools/plot_correlation.py
           test -f tools/tlb_health_score.py
           test -f tools/prometheus_exporter.py
+          test -f tools/sample_gpu.py
+          test -f tools/sample_sched.py
+          test -f run_experiment.sh
           test -f vm/run_qemu.sh
           test -f vm/README.md
 
@@ -63,19 +75,39 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install plotting dependency
+        run: python -m pip install matplotlib
+
       - name: Python syntax checks
-        run: python -m py_compile tools/parse_trace.py tools/tlb_health_score.py tools/prometheus_exporter.py
+        run: python -m py_compile tools/parse_trace.py tools/tlb_health_score.py tools/prometheus_exporter.py tools/correlate_latency.py tools/sample_gpu.py tools/sample_sched.py tools/plot_correlation.py
 
       - name: Python smoke checks
         run: |
           python tools/parse_trace.py does-not-exist.txt --csv /tmp/missing.csv >/tmp/missing_stdout.csv
           test -f /tmp/missing.csv
           python tools/tlb_health_score.py does-not-exist.csv --window-seconds 10 >/tmp/missing_health.txt
+          python tools/sample_gpu.py --duration 1 --interval 0.1 --output /tmp/gpu.csv
+          test -f /tmp/gpu.csv
+          python tools/sample_sched.py --duration 1 --interval 0.5 --output /tmp/sched.csv
+          test -f /tmp/sched.csv
 
       - name: Parse sample trace
         run: |
           python tools/parse_trace.py examples/sample_trace.txt --csv /tmp/sample_trace.csv >/tmp/parse_stdout.csv
           python tools/tlb_health_score.py /tmp/sample_trace.csv --window-seconds 10 >/tmp/health.txt
+
+      - name: Run correlation tool on examples
+        run: |
+          python tools/correlate_latency.py --tlb examples/tlb_timeseries.csv --latency examples/latency_timeseries.csv --gpu examples/gpu_timeseries.csv --sched examples/sched_timeseries.csv --output /tmp/correlation.csv >/tmp/correlation_summary.txt
+          test -f /tmp/correlation.csv
+
+      - name: Generate plots from examples
+        run: |
+          python tools/plot_correlation.py --input examples/correlation.csv --output-dir /tmp/plots
+          test -f /tmp/plots/tlb_invalidations_vs_p99.png
+          test -f /tmp/plots/bytes_invalidated_vs_p99.png
+          test -f /tmp/plots/gpu_util_vs_tlb_invalidations.png
+          test -f /tmp/plots/scheduler_pressure_vs_tlb_invalidations.png
 
       - name: Exporter survives missing input
         run: |
@@ -83,6 +115,11 @@ jobs:
           sleep 2
           curl -fsS http://127.0.0.1:9824/metrics | tee /tmp/exporter_metrics.txt
           grep -q "tlb_exporter_error" /tmp/exporter_metrics.txt
+
+      - name: Shell syntax checks
+        run: |
+          bash -n vm/run_qemu.sh
+          bash -n run_experiment.sh
 
       - name: Build benchmarks
         run: make -C benchmarks
