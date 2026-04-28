@@ -97,6 +97,7 @@ tlb-invalidation-lab/
 ├── patches/
 ├── tools/
 ├── benchmarks/
+├── vm/
 ├── visuals/
 └── .github/workflows/
 ```
@@ -108,6 +109,14 @@ tlb-invalidation-lab/
 - minimal kernel overhead
 - realistic Linux 6.6+ assumptions
 - no claims of direct GPU acceleration
+
+## Recent Improvements
+
+- timestamp-aware parsing with 1 second correlation buckets
+- per-process Prometheus metrics with bounded label cardinality
+- CPU-normalized health scoring based on per-core invalidation rate
+- reduced arm64 trace-noise in the architecture sketch to avoid range-flooding
+- a minimal QEMU bootstrap for lab validation work
 
 ## Patch set overview
 
@@ -195,15 +204,30 @@ python3 tools/parse_trace.py out/tlb_trace.txt --csv out/tlb_trace.csv
 python3 tools/tlb_health_score.py out/tlb_trace.csv
 ```
 
+The parser emits a time-series CSV with:
+
+```text
+timestamp,pid,comm,invalidations,bytes,invalidations_per_sec,bytes_invalidated_per_sec
+```
+
 If no matching events are present, the parser still emits a valid CSV header and warns on stderr.
 
 ### 6. Export metrics
 
 ```bash
-python3 tools/prometheus_exporter.py --input out/tlb_trace.csv --listen 0.0.0.0 --port 9824
+python3 tools/prometheus_exporter.py --input out/tlb_trace.csv --listen 0.0.0.0 --port 9824 --max-process-labels 10
 ```
 
-The exporter is designed to expose an error metric rather than crash if the input file is missing or malformed.
+The exporter is designed to expose an error metric rather than crash if the input file is missing or malformed. It also emits top-N per-process labeled series and rolls the rest into `pid="other",comm="other"`.
+
+### 7. Boot a minimal lab VM
+
+```bash
+cd /path/to/tlb-invalidation-lab/vm
+./run_qemu.sh
+```
+
+See `vm/README.md` for bootstrap details and environment overrides.
 
 ## Architecture probe modules
 
@@ -259,9 +283,10 @@ The files under `examples/` are synthetic documentation artifacts, not productio
 
 `examples/sample_health_score.txt` shows the corresponding health-score output for a 10 second observation window:
 
-- `invalidations_per_sec=0.10`
-- `bytes_invalidated_per_sec=4915.20`
-- `avg_fanout=8.00`
+- `invalidations_per_sec_raw=0.10`
+- `invalidations_per_sec_per_core=0.01`
+- `bytes_invalidated_per_sec_raw=4915.20`
+- `cpu_count=8`
 - `health_class=green`
 
 These examples are intentionally modest. They are meant to show the data shape and analysis flow, not to imply a dramatic performance issue.

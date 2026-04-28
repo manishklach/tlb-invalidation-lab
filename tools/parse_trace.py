@@ -1,133 +1,95 @@
 #!/usr/bin/env python3
 import argparse
 import csv
+import math
 import re
 import sys
 from collections import defaultdict
 
-TLB_RE = re.compile(
-    r"tlb_invalidation:\s+pid=(?P<pid>\d+)\s+tgid=(?P<tgid>\d+)\s+comm=(?P<comm>\S+)\s+"
+LINE_RE = re.compile(
+    r"^\S+\s+\[\d+\]\s+\S+\s+(?P<timestamp>\d+\.\d+):\s+"
+    r"(?P<event>tlb_invalidation|mmu_notifier_invalidate_range):\s+"
+    r"pid=(?P<pid>\d+)\s+tgid=(?P<tgid>\d+)\s+comm=(?P<comm>\S+)\s+"
     r"start=0x(?P<start>[0-9a-fA-F]+)\s+end=0x(?P<end>[0-9a-fA-F]+)\s+"
-    r"bytes=(?P<bytes>\d+)\s+target_cpu_count=(?P<fanout>\d+)\s+broadcast=(?P<broadcast>[01])"
-)
-
-MMU_RE = re.compile(
-    r"mmu_notifier_invalidate_range:\s+pid=(?P<pid>\d+)\s+tgid=(?P<tgid>\d+)\s+comm=(?P<comm>\S+)\s+"
-    r"start=0x(?P<start>[0-9a-fA-F]+)\s+end=0x(?P<end>[0-9a-fA-F]+)\s+"
-    r"bytes=(?P<bytes>\d+)\s+phase=(?P<phase>start|end)"
+    r"bytes=(?P<bytes>\d+)"
+    r"(?:\s+target_cpu_count=(?P<fanout>\d+)\s+broadcast=(?P<broadcast>[01]))?"
+    r"(?:\s+phase=(?P<phase>start|end))?"
 )
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Parse tlb-invalidation trace output")
     parser.add_argument("trace", help="input trace text file")
-    parser.add_argument("--csv", dest="csv_path", help="write aggregated CSV")
+    parser.add_argument("--csv", dest="csv_path", help="write time-series CSV")
     return parser.parse_args()
 
 
-def update_bucket(buckets, key, event_type, data):
-    bucket = buckets[key]
-    bucket["event_count"] += 1
-    bucket["bytes_invalidated"] += int(data["bytes"])
-    bucket["type_counts"][event_type] += 1
-
-    if event_type == "tlb":
-        bucket["fanout_total"] += int(data["fanout"])
-        bucket["broadcast_count"] += int(data["broadcast"])
-    else:
-        if data["phase"] == "start":
-            bucket["mmu_start_count"] += 1
-        else:
-            bucket["mmu_end_count"] += 1
+def make_writer(handle):
+    fieldnames = [
+        "timestamp",
+        "pid",
+        "comm",
+        "invalidations",
+        "bytes",
+        "invalidations_per_sec",
+        "bytes_invalidated_per_sec",
+    ]
+    writer = csv.DictWriter(handle, fieldnames=fieldnames)
+    writer.writeheader()
+    return writer
 
 
 def main():
     args = parse_args()
-    fieldnames = [
-        "pid",
-        "tgid",
-        "comm",
-        "event_count",
-        "tlb_invalidations",
-        "mmu_events",
-        "mmu_start_count",
-        "mmu_end_count",
-        "bytes_invalidated",
-        "avg_fanout",
-        "broadcast_count",
-    ]
     buckets = defaultdict(lambda: {
+        "timestamp": 0,
         "pid": 0,
-        "tgid": 0,
         "comm": "",
-        "event_count": 0,
-        "bytes_invalidated": 0,
-        "fanout_total": 0,
-        "broadcast_count": 0,
-        "mmu_start_count": 0,
-        "mmu_end_count": 0,
-        "type_counts": defaultdict(int),
+        "invalidations": 0,
+        "bytes": 0,
     })
-
     matched = 0
     input_error = None
 
     try:
-        with open(args.trace, "r", encoding="utf-8", errors="replace") as f:
-            for line in f:
-                m = TLB_RE.search(line)
-                if m:
-                    data = m.groupdict()
-                    key = (int(data["tgid"]), data["comm"])
-                    bucket = buckets[key]
-                    bucket["pid"] = int(data["pid"])
-                    bucket["tgid"] = int(data["tgid"])
-                    bucket["comm"] = data["comm"]
-                    update_bucket(buckets, key, "tlb", data)
-                    matched += 1
+        with open(args.trace, "r", encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                match = LINE_RE.search(line)
+                if not match:
                     continue
 
-                m = MMU_RE.search(line)
-                if m:
-                    data = m.groupdict()
-                    key = (int(data["tgid"]), data["comm"])
-                    bucket = buckets[key]
-                    bucket["pid"] = int(data["pid"])
-                    bucket["tgid"] = int(data["tgid"])
-                    bucket["comm"] = data["comm"]
-                    update_bucket(buckets, key, "mmu", data)
-                    matched += 1
+                data = match.groupdict()
+                bucket_ts = int(math.floor(float(data["timestamp"])))
+                key = (bucket_ts, int(data["pid"]), data["comm"])
+                bucket = buckets[key]
+                bucket["timestamp"] = bucket_ts
+                bucket["pid"] = int(data["pid"])
+                bucket["comm"] = data["comm"]
+                bucket["bytes"] += int(data["bytes"])
+                if data["event"] == "tlb_invalidation":
+                    bucket["invalidations"] += 1
+                matched += 1
     except OSError as exc:
         input_error = exc
 
     rows = []
-    for _, bucket in sorted(buckets.items(), key=lambda item: item[1]["bytes_invalidated"], reverse=True):
-        tlb_count = bucket["type_counts"]["tlb"]
-        avg_fanout = 0.0
-        if tlb_count:
-            avg_fanout = bucket["fanout_total"] / tlb_count
+    for _, bucket in sorted(buckets.items(), key=lambda item: (item[1]["timestamp"], item[1]["pid"], item[1]["comm"])):
         rows.append({
+            "timestamp": bucket["timestamp"],
             "pid": bucket["pid"],
-            "tgid": bucket["tgid"],
             "comm": bucket["comm"],
-            "event_count": bucket["event_count"],
-            "tlb_invalidations": tlb_count,
-            "mmu_events": bucket["type_counts"]["mmu"],
-            "mmu_start_count": bucket["mmu_start_count"],
-            "mmu_end_count": bucket["mmu_end_count"],
-            "bytes_invalidated": bucket["bytes_invalidated"],
-            "avg_fanout": f"{avg_fanout:.2f}",
-            "broadcast_count": bucket["broadcast_count"],
+            "invalidations": bucket["invalidations"],
+            "bytes": bucket["bytes"],
+            "invalidations_per_sec": f"{float(bucket['invalidations']):.2f}",
+            "bytes_invalidated_per_sec": f"{float(bucket['bytes']):.2f}",
         })
 
-    writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
-    writer.writeheader()
+    writer = make_writer(sys.stdout)
     writer.writerows(rows)
 
     if args.csv_path:
-        with open(args.csv_path, "w", newline="", encoding="utf-8") as csvfile:
-            csv_writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-            csv_writer.writeheader()
+        with open(args.csv_path, "w", newline="", encoding="utf-8") as handle:
+            csv_writer = make_writer(handle)
             csv_writer.writerows(rows)
 
     if input_error is not None:

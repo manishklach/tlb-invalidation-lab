@@ -50,6 +50,8 @@ jobs:
           test -f tools/parse_trace.py
           test -f tools/tlb_health_score.py
           test -f tools/prometheus_exporter.py
+          test -f vm/run_qemu.sh
+          test -f vm/README.md
 
   userspace-checks:
     runs-on: ubuntu-latest
@@ -74,6 +76,13 @@ jobs:
         run: |
           python tools/parse_trace.py examples/sample_trace.txt --csv /tmp/sample_trace.csv >/tmp/parse_stdout.csv
           python tools/tlb_health_score.py /tmp/sample_trace.csv --window-seconds 10 >/tmp/health.txt
+
+      - name: Exporter survives missing input
+        run: |
+          timeout 5s python tools/prometheus_exporter.py --input does-not-exist.csv --listen 127.0.0.1 --port 9824 --refresh-seconds 1 >/tmp/exporter.log 2>&1 &
+          sleep 2
+          curl -fsS http://127.0.0.1:9824/metrics | tee /tmp/exporter_metrics.txt
+          grep -q "tlb_exporter_error" /tmp/exporter_metrics.txt
 
       - name: Build benchmarks
         run: make -C benchmarks

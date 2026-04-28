@@ -1,7 +1,9 @@
 synthetic_example=1
-invalidations_per_sec=0.10
-bytes_invalidated_per_sec=4915.20
-avg_fanout=8.00
-health_score=6.25
+cpu_count=8
+invalidations_per_sec_raw=0.10
+invalidations_per_sec_per_core=0.01
+bytes_invalidated_per_sec_raw=4915.20
+bytes_invalidated_per_sec_per_core=614.40
+health_score=20.00
 health_class=green
 note=derived from examples/sample_trace.csv over a 10 second synthetic window

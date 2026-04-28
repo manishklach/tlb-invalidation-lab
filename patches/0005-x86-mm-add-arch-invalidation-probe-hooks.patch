@@ -7,15 +7,15 @@ This is a lab-oriented sketch showing where x86 invalidation paths could
 surface more architecture-specific observability fields. It is not
 presented as upstream-ready code.
 ---
- arch/x86/mm/tlb.c          | 34 ++++++++++++++++++++++++++++++++++
+ arch/x86/mm/tlb.c          | 38 ++++++++++++++++++++++++++++++++++++++
  include/trace/events/tlb.h | 40 ++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 74 insertions(+)
+ 2 files changed, 78 insertions(+)
 
 diff --git a/arch/x86/mm/tlb.c b/arch/x86/mm/tlb.c
 index 222222222222..555555555555 100644
 --- a/arch/x86/mm/tlb.c
 +++ b/arch/x86/mm/tlb.c
-@@ -1032,6 +1032,40 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+@@ -1032,6 +1032,44 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
  {
  	unsigned long range_size = 0;
  	int target_cpu_count = 0;
@@ -25,7 +25,7 @@ index 222222222222..555555555555 100644
  	bool broadcast = false;
  
  	if (info->end != TLB_FLUSH_ALL && info->end > info->start)
-@@ -1039,12 +1073,32 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
+@@ -1039,12 +1077,36 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
  
  	if (mask)
  		target_cpu_count = cpumask_weight(mask);
@@ -33,21 +33,23 @@ index 222222222222..555555555555 100644
 +	range_pages = range_size >> PAGE_SHIFT;
  
  	if (target_cpu_count > 1) {
++#ifdef CONFIG_X86
  #ifdef X86_FEATURE_INVLPGB
- 		broadcast = boot_cpu_has(X86_FEATURE_INVLPGB);
+-		broadcast = boot_cpu_has(X86_FEATURE_INVLPGB);
++		if (boot_cpu_has(X86_FEATURE_INVLPGB))
++			broadcast = true;
  #endif
++#endif
  	}
-+
+ 
 +	/*
 +	 * tlb-invalidation-lab: research patch sketch, not upstream-ready.
 +	 * This is a best-effort architectural classification, not a precise
 +	 * proof of which microarchitectural path completed the invalidation.
 +	 */
-+#ifdef X86_FEATURE_INVLPGB
 +	if (broadcast) {
 +		instruction_family = TLB_INSTR_INVLPGB;
 +	} else
-+#endif
 +#ifdef X86_FEATURE_INVPCID
 +	if (boot_cpu_has(X86_FEATURE_INVPCID) &&
 +	    info->end == TLB_FLUSH_ALL) {
@@ -57,11 +59,10 @@ index 222222222222..555555555555 100644
 +	if (range_pages == 1) {
 +		instruction_family = TLB_INSTR_INVLPG;
 +	}
- 
++
  	trace_tlb_invalidation(task_pid_nr(current), task_tgid_nr(current),
  			       current->comm, info->start, info->end,
-@@ -1052,6 +1106,10 @@ trace_tlb_invalidation_event(const struct flush_tlb_info *info,
- 			       target_cpu_count, broadcast);
+ 			       range_size, target_cpu_count, broadcast);
 +	trace_tlb_arch_invalidation(task_pid_nr(current), task_tgid_nr(current),
 +				    current->comm, info->start, info->end,
 +				    range_pages, remote, instruction_family);
@@ -85,11 +86,13 @@ index 444444444444..666666666666 100644
 +TLB_INSTR_FAMILY
  
  /*
- * Now redefine the EM() and EMe() macros to map the enums to the strings
+  * Now redefine the EM() and EMe() macros to map the enums to the strings
 @@ -17,6 +28,8 @@ TLB_FLUSH_REASON
  #undef EMe
  #define EM(a,b)		{ a, b },
  #define EMe(a,b)	{ a, b }
++
++TLB_INSTR_FAMILY
  
  TRACE_EVENT(tlb_flush,
 @@ -66,6 +79,33 @@ TRACE_EVENT(tlb_invalidation,

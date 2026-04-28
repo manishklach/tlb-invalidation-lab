@@ -1,4 +1,5 @@
 out/
+vm/linux/
 benchmarks/mmap_churn
 benchmarks/mprotect_churn
 benchmarks/threaded_mmap_churn

@@ -1,6 +1,7 @@
 synthetic_example=1
 workload_label=single_process_lab_capture
 observation_window_sec=10
+time_bucket_sec=1
 top_process=inferd
 tlb_invalidations=1
 mmu_notifier_events=2
