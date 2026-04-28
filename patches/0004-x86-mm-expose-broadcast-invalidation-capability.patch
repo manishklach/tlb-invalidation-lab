@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000004 Mon Sep 17 00:00:00 2001
+From: tlb-invalidation-lab <lab@example.com>
+Date: Mon, 27 Apr 2026 10:03:00 -0700
+Subject: [PATCH 4/4] x86/mm: expose broadcast invalidation capability
+
+Expose whether the running system advertises hardware capability related
+to broadcast invalidation support. This patch does not implement INVLPGB
+or any other new invalidation behavior. It only exposes capability bits
+through sysfs for observability.
+---
+ arch/x86/mm/Makefile       |  1 +
+ arch/x86/mm/tlb_features.c | 57 +++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 58 insertions(+)
+ create mode 100644 arch/x86/mm/tlb_features.c
+
+diff --git a/arch/x86/mm/Makefile b/arch/x86/mm/Makefile
+index bbbbbbbbbbbb..cccccccccccc 100644
+--- a/arch/x86/mm/Makefile
++++ b/arch/x86/mm/Makefile
+@@ -1,3 +1,4 @@
+ obj-y			:= fault.o init.o extable.o ioremap.o mmap.o pgtable.o
+ obj-y			+= tlb.o
++obj-y			+= tlb_features.o
+ obj-$(CONFIG_AMD_MEM_ENCRYPT)	+= mem_encrypt.o
+diff --git a/arch/x86/mm/tlb_features.c b/arch/x86/mm/tlb_features.c
+new file mode 100644
+index 000000000000..dddddddddddd
+--- /dev/null
++++ b/arch/x86/mm/tlb_features.c
+@@ -0,0 +1,57 @@
++// SPDX-License-Identifier: GPL-2.0
++#include <linux/init.h>
++#include <linux/kernel.h>
++#include <linux/kobject.h>
++#include <linux/mm.h>
++#include <linux/sysfs.h>
++#include <asm/cpufeature.h>
++
++static struct kobject *tlb_features_kobj;
++
++static ssize_t broadcast_invalidation_show(struct kobject *kobj,
++					   struct kobj_attribute *attr,
++					   char *buf)
++{
++	return sysfs_emit(buf, "%d\n",
++			  boot_cpu_has(X86_FEATURE_INVLPGB) ? 1 : 0);
++}
++
++static ssize_t invlpgb_show(struct kobject *kobj,
++			    struct kobj_attribute *attr, char *buf)
++{
++	return sysfs_emit(buf, "%d\n",
++			  boot_cpu_has(X86_FEATURE_INVLPGB) ? 1 : 0);
++}
++
++static struct kobj_attribute broadcast_invalidation_attr =
++	__ATTR_RO(broadcast_invalidation);
++static struct kobj_attribute invlpgb_attr = __ATTR_RO(invlpgb);
++
++static struct attribute *tlb_features_attrs[] = {
++	&broadcast_invalidation_attr.attr,
++	&invlpgb_attr.attr,
++	NULL,
++};
++
++static const struct attribute_group tlb_features_group = {
++	.attrs = tlb_features_attrs,
++};
++
++static int __init tlb_features_init(void)
++{
++	int ret;
++
++	tlb_features_kobj = kobject_create_and_add("tlb_features", mm_kobj);
++	if (!tlb_features_kobj)
++		return -ENOMEM;
++
++	ret = sysfs_create_group(tlb_features_kobj, &tlb_features_group);
++	if (ret)
++		kobject_put(tlb_features_kobj);
++
++	return ret;
++}
++subsys_initcall(tlb_features_init);
+-- 
+2.43.0

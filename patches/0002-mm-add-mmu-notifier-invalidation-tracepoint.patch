@@ -1,0 +1,114 @@
+From 0000000000000000000000000000000000000002 Mon Sep 17 00:00:00 2001
+From: tlb-invalidation-lab <lab@example.com>
+Date: Mon, 27 Apr 2026 10:01:00 -0700
+Subject: [PATCH 2/4] mm: add mmu notifier invalidation tracepoint
+
+Add tracepoints around MMU notifier invalidation start/end so notifier
+activity can be correlated with TLB invalidation bursts and AI runtime
+subsystems such as UVM- or RDMA-adjacent invalidation paths.
+---
+ include/trace/events/mmu.h | 49 +++++++++++++++++++++++++++++++++++++++++++++
+ mm/mmu_notifier.c          | 10 +++++++++
+ 2 files changed, 59 insertions(+)
+ create mode 100644 include/trace/events/mmu.h
+
+diff --git a/include/trace/events/mmu.h b/include/trace/events/mmu.h
+new file mode 100644
+index 000000000000..444444444444
+--- /dev/null
++++ b/include/trace/events/mmu.h
+@@ -0,0 +1,49 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#undef TRACE_SYSTEM
++#define TRACE_SYSTEM mmu
++
++#if !defined(_TRACE_MMU_H) || defined(TRACE_HEADER_MULTI_READ)
++#define _TRACE_MMU_H
++
++#include <linux/tracepoint.h>
++
++TRACE_EVENT(mmu_notifier_invalidate_range,
++	TP_PROTO(pid_t pid, pid_t tgid, const char *comm,
++		 unsigned long start, unsigned long end,
++		 unsigned long range_size, int phase),
++	TP_ARGS(pid, tgid, comm, start, end, range_size, phase),
++	TP_STRUCT__entry(
++		__field(pid_t, pid)
++		__field(pid_t, tgid)
++		__string(comm, comm)
++		__field(unsigned long, start)
++		__field(unsigned long, end)
++		__field(unsigned long, range_size)
++		__field(int, phase)
++	),
++	TP_fast_assign(
++		__entry->pid = pid;
++		__entry->tgid = tgid;
++		__assign_str(comm, comm);
++		__entry->start = start;
++		__entry->end = end;
++		__entry->range_size = range_size;
++		__entry->phase = phase;
++	),
++	TP_printk("pid=%d tgid=%d comm=%s start=0x%lx end=0x%lx bytes=%lu phase=%s",
++		  __entry->pid, __entry->tgid, __get_str(comm),
++		  __entry->start, __entry->end, __entry->range_size,
++		  __entry->phase ? "end" : "start")
++);
++
++#endif /* _TRACE_MMU_H */
++
++#include <trace/define_trace.h>
+diff --git a/mm/mmu_notifier.c b/mm/mmu_notifier.c
+index 555555555555..666666666666 100644
+--- a/mm/mmu_notifier.c
++++ b/mm/mmu_notifier.c
+@@ -4,6 +4,9 @@
+ #include <linux/srcu.h>
+ #include <linux/mmu_notifier.h>
+ #include <linux/interval_tree.h>
++#define CREATE_TRACE_POINTS
++#include <trace/events/mmu.h>
++
+ 
+ static DEFINE_SPINLOCK(mmu_notifier_lock);
+ 
+@@ -420,6 +423,9 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
+ {
+ 	struct mmu_notifier_subscriptions *subscriptions =
+ 		range->mm->notifier_subscriptions;
++	unsigned long size = range->end > range->start ?
++			     range->end - range->start : 0;
++
+ 	int id;
+ 
+ 	if (!subscriptions)
+@@ -427,6 +433,8 @@ void __mmu_notifier_invalidate_range_start(struct mmu_notifier_range *range)
+ 
+ 	lock_map_acquire(&__mmu_notifier_invalidate_range_start_map);
+ 
++	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
++		task_tgid_nr(current), current->comm, range->start, range->end, size, 0);
+ 	id = srcu_read_lock(&subscriptions->srcu);
+ 	hlist_for_each_entry_rcu(range->subscription, &subscriptions->list, hlist,
+ 				 srcu_read_lock_held(&subscriptions->srcu))
+@@ -443,6 +451,8 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
+ {
+ 	struct mmu_notifier_subscriptions *subscriptions =
+ 		range->mm->notifier_subscriptions;
++	unsigned long size = range->end > range->start ?
++			     range->end - range->start : 0;
+ 
+ 	if (!subscriptions)
+ 		return;
+@@ -450,6 +460,8 @@ void __mmu_notifier_invalidate_range_end(struct mmu_notifier_range *range)
+ 	hlist_for_each_entry_rcu(range->subscription, &subscriptions->list, hlist,
+ 				 srcu_read_lock_held(&subscriptions->srcu))
+ 		__mmu_notifier_invalidate_range_end(range);
++	trace_mmu_notifier_invalidate_range(task_pid_nr(current),
++		task_tgid_nr(current), current->comm, range->start, range->end, size, 1);
+ 	srcu_read_unlock(&subscriptions->srcu, range->id);
+ 	lock_map_release(&__mmu_notifier_invalidate_range_start_map);
+ }
+-- 
+2.43.0

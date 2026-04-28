@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-label="TLB invalidation flow">
+  <style>
+    .bg { fill: #0b1220; }
+    .box { fill: #13213a; stroke: #77b6ff; stroke-width: 2; rx: 18; }
+    .box2 { fill: #162845; stroke: #8de0c1; stroke-width: 2; rx: 18; }
+    .text { fill: #eef4ff; font: 600 24px sans-serif; }
+    .sub { fill: #b7c7e6; font: 400 16px sans-serif; }
+    .arrow { stroke: #8de0c1; stroke-width: 4; marker-end: url(#m); }
+    .title { fill: #ffffff; font: 700 28px sans-serif; }
+  </style>
+  <defs>
+    <marker id="m" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8de0c1"/>
+    </marker>
+  </defs>
+  <rect class="bg" x="0" y="0" width="1200" height="420"/>
+  <text class="title" x="40" y="50">Mapping Change to TLB Invalidation</text>
+  <rect class="box" x="40" y="110" width="200" height="120" rx="18"/>
+  <rect class="box" x="290" y="110" width="220" height="120" rx="18"/>
+  <rect class="box2" x="570" y="110" width="220" height="120" rx="18"/>
+  <rect class="box2" x="850" y="110" width="280" height="120" rx="18"/>
+  <text class="text" x="140" y="155" text-anchor="middle">Userspace Trigger</text>
+  <text class="sub" x="140" y="185" text-anchor="middle">mmap / munmap / mprotect</text>
+  <text class="sub" x="140" y="208" text-anchor="middle">UVM / RDMA / allocator churn</text>
+  <text class="text" x="400" y="155" text-anchor="middle">Page-Table Update</text>
+  <text class="sub" x="400" y="185" text-anchor="middle">kernel mutates mapping state</text>
+  <text class="sub" x="400" y="208" text-anchor="middle">stale translations now exist</text>
+  <text class="text" x="680" y="155" text-anchor="middle">Invalidation Dispatch</text>
+  <text class="sub" x="680" y="185" text-anchor="middle">local flush + remote fanout</text>
+  <text class="sub" x="680" y="208" text-anchor="middle">IPI or hardware-assisted path</text>
+  <text class="text" x="990" y="155" text-anchor="middle">Observed Effects</text>
+  <text class="sub" x="990" y="185" text-anchor="middle">CPU interruption, translation refill,</text>
+  <text class="sub" x="990" y="208" text-anchor="middle">scheduler jitter, tail-latency expansion</text>
+  <line class="arrow" x1="240" y1="170" x2="290" y2="170"/>
+  <line class="arrow" x1="510" y1="170" x2="570" y2="170"/>
+  <line class="arrow" x1="790" y1="170" x2="850" y2="170"/>
+  <rect x="290" y="290" width="620" height="84" rx="16" fill="#111b2d" stroke="#37507f" stroke-width="2"/>
+  <text class="text" x="600" y="325" text-anchor="middle">Observability Hooks in This Repo</text>
+  <text class="sub" x="600" y="350" text-anchor="middle">x86 TLB tracepoints, MMU notifier tracepoints, optional /proc sketch, userspace aggregation</text>
+</svg>

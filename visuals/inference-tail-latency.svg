@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="500" viewBox="0 0 1200 500" role="img" aria-label="Inference tail latency amplification">
+  <style>
+    .bg { fill: #0d1117; }
+    .axis { stroke: #94a3b8; stroke-width: 2; }
+    .grid { stroke: #233044; stroke-width: 1; }
+    .fast { fill: none; stroke: #7cc7ff; stroke-width: 4; }
+    .tail { fill: none; stroke: #ff9c6e; stroke-width: 4; }
+    .label { fill: #e5edf8; font: 600 22px sans-serif; }
+    .small { fill: #b7c4d8; font: 400 16px sans-serif; }
+    .note { fill: #111827; stroke: #4b6aa1; stroke-width: 2; }
+  </style>
+  <rect class="bg" x="0" y="0" width="1200" height="500"/>
+  <text class="label" x="40" y="50">Tail-Latency Amplification from Invalidation Bursts</text>
+  <line class="axis" x1="100" y1="400" x2="1100" y2="400"/>
+  <line class="axis" x1="100" y1="100" x2="100" y2="400"/>
+  <line class="grid" x1="100" y1="340" x2="1100" y2="340"/>
+  <line class="grid" x1="100" y1="280" x2="1100" y2="280"/>
+  <line class="grid" x1="100" y1="220" x2="1100" y2="220"/>
+  <line class="grid" x1="100" y1="160" x2="1100" y2="160"/>
+  <text class="small" x="1110" y="405">time</text>
+  <text class="small" x="55" y="105" transform="rotate(-90 55,105)">latency</text>
+  <path class="fast" d="M120 360 C220 330, 320 320, 420 312 S620 300, 740 295 S920 292, 1080 290"/>
+  <path class="tail" d="M120 360 C220 330, 320 320, 420 312 S600 304, 690 302 C760 305, 790 220, 840 205 C900 198, 960 215, 1080 210"/>
+  <text class="small" x="950" y="287" fill="#7cc7ff">steady-state median</text>
+  <text class="small" x="855" y="192" fill="#ff9c6e">P99 tail under bursty invalidation</text>
+  <rect class="note" x="720" y="60" width="360" height="88" rx="16"/>
+  <text class="label" x="900" y="95" text-anchor="middle" font-size="20">Operational reading</text>
+  <text class="small" x="900" y="120" text-anchor="middle">One noisy worker can pace a batch.</text>
+  <text class="small" x="900" y="140" text-anchor="middle">Cluster averages can look stable while P99 degrades.</text>
+</svg>
